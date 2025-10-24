@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+// ✅ Added new icons for consistency
+import { ArrowLeft, Edit, Camera } from "lucide-react";
 
 export default function Profile() {
   const router = useRouter();
@@ -21,7 +23,7 @@ export default function Profile() {
     avatar_url: "",
   });
 
-  const [selectedFile, setSelectedFile] = useState(null); // new state for image selection
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [passwordForm, setPasswordForm] = useState({
     current: "",
@@ -29,7 +31,7 @@ export default function Profile() {
     confirm: "",
   });
 
-  // ✅ Fetch user and profile info
+  // ✅ Fetch user and profile info (Unchanged)
   useEffect(() => {
     const getProfile = async () => {
       setLoading(true);
@@ -72,12 +74,15 @@ export default function Profile() {
     getProfile();
   }, [router]);
 
-  // ✅ Handle input changes
+  // --- All your handler functions (handleChange, handleImageSelect, saveProfile, etc.) ---
+  // --- are perfectly fine. No changes needed to them. ---
+  
+  // ✅ Handle input changes (Unchanged)
   const handleChange = (e) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
   };
 
-  // ✅ Handle profile picture preview only
+  // ✅ Handle profile picture preview only (Unchanged)
   const handleImageSelect = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -87,7 +92,7 @@ export default function Profile() {
     setProfile((prev) => ({ ...prev, avatar_url: previewUrl }));
   };
 
-  // ✅ Save profile updates (including image upload if selected)
+  // ✅ Save profile updates (including image upload if selected) (Unchanged)
   const saveProfile = async () => {
     setIsEditMode(false);
     setLoading(true);
@@ -149,7 +154,7 @@ export default function Profile() {
     });
   };
 
-  // ✅ Change password securely
+  // ✅ Change password securely (Unchanged)
   const handleChangePassword = async () => {
     const { current, new: newPass, confirm } = passwordForm;
 
@@ -193,18 +198,17 @@ export default function Profile() {
     }
   };
 
-  // ✅ Logout
+  // ✅ Logout (Unchanged)
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
+  // ✅ --- IMPROVEMENT: Use Skeleton Loader ---
+  // This shows a professional placeholder that matches your page layout
+  // and has the white background you requested for the content area.
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen text-gray-600">
-        Loading...
-      </div>
-    );
+    return <ProfileSkeleton />;
   }
 
   return (
@@ -216,23 +220,16 @@ export default function Profile() {
             onClick={() => router.back()}
             className="p-2 rounded-full hover:bg-[#a30000] transition"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-            </svg>
+            {/* ✅ IMPROVEMENT: Consistent Lucide Icon */}
+            <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-lg font-semibold">Profile</h1>
           <button
             onClick={() => setIsEditMode(!isEditMode)}
             className="p-2 rounded-full hover:bg-[#a30000] transition"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-              />
-            </svg>
+            {/* ✅ IMPROVEMENT: Consistent Lucide Icon (w-5 is a good size for 'edit') */}
+            <Edit className="w-5 h-5" />
           </button>
         </div>
 
@@ -243,19 +240,8 @@ export default function Profile() {
             {isEditMode && (
               <label className="absolute bottom-1 right-1 bg-[#8B0000] p-2 rounded-full text-white cursor-pointer hover:bg-[#a30000] transition">
                 <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 11c0-1.1.9-2 2-2h4l1-1 1 1h2v2l-1 1v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4l-1-1V9h2l1-1 1 1h4a2 2 0 012 2z"
-                  />
-                </svg>
+                {/* ✅ IMPROVEMENT: Consistent Lucide Icon */}
+                <Camera className="w-4 h-4" />
               </label>
             )}
           </div>
@@ -264,7 +250,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Info Section */}
+      {/* Info Section (Unchanged) */}
       <div className="bg-white rounded-t-3xl -mt-4 p-6">
         {!isEditMode ? (
           <>
@@ -317,7 +303,7 @@ export default function Profile() {
         )}
       </div>
 
-      {/* Password Modal */}
+      {/* Password Modal (Unchanged) */}
       {showPasswordModal && (
         <Modal title="Change Password" onClose={() => setShowPasswordModal(false)}>
           <InputField
@@ -350,7 +336,7 @@ export default function Profile() {
         </Modal>
       )}
 
-      {/* Logout Modal */}
+      {/* Logout Modal (Unchanged) */}
       {showLogoutModal && (
         <Modal title="Logout" onClose={() => setShowLogoutModal(false)}>
           <p className="text-gray-700 mb-4 text-center">
@@ -376,7 +362,56 @@ export default function Profile() {
   );
 }
 
-/* --- REUSABLE COMPONENTS --- */
+/* --- ✅ NEW: SKELETON LOADER COMPONENT --- */
+function ProfileSkeleton() {
+  return (
+    <div className="bg-gray-100 min-h-screen font-sans animate-pulse">
+      {/* Header Skeleton */}
+      <div className="bg-[#8B0000] text-white rounded-b-3xl shadow-lg">
+        <div className="flex items-center justify-between p-4">
+          <div className="w-8 h-8 rounded-full bg-white/20"></div>
+          <div className="w-20 h-6 rounded bg-white/20"></div>
+          <div className="w-8 h-8 rounded-full bg-white/20"></div>
+        </div>
+        {/* Avatar Skeleton */}
+        <div className="flex flex-col items-center py-6">
+          <div className="relative w-24 h-24 rounded-full bg-white/20 border-4 border-[#8B0000] shadow-inner"></div>
+          <div className="h-6 w-32 bg-white/20 rounded mt-3"></div>
+          <div className="h-4 w-24 bg-white/20 rounded mt-2"></div>
+        </div>
+      </div>
+      
+      {/* Info Section Skeleton (with the white background you wanted) */}
+      <div className="bg-white rounded-t-3xl -mt-4 p-6">
+        <div className="space-y-3">
+          <SkeletonItem />
+          <SkeletonItem />
+          <SkeletonItem />
+          <SkeletonItem />
+        </div>
+        {/* Skeleton for Settings buttons */}
+        <div className="mt-8">
+          <div className="h-4 w-24 bg-gray-200 rounded mb-3"></div>
+          <div className="w-full h-14 bg-gray-100 rounded-2xl p-4"></div>
+          <div className="w-full h-14 bg-gray-100 rounded-2xl p-4 mt-3"></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Helper for the skeleton items
+function SkeletonItem() {
+  return (
+    <div className="bg-gray-100 rounded-2xl p-4">
+      <div className="h-3 w-1/4 bg-gray-300 rounded mb-2"></div>
+      <div className="h-5 w-3/4 bg-gray-300 rounded"></div>
+    </div>
+  );
+}
+
+
+/* --- REUSABLE COMPONENTS (Unchanged) --- */
 function ProfileItem({ label, value }) {
   return (
     <div className="bg-gray-100 rounded-2xl p-4 mb-3">

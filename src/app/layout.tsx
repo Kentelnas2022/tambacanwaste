@@ -2,7 +2,7 @@ import "./globals.css";
 import { ReactNode } from "react";
 
 export const metadata = {
-  title: "Residents Dashboard",
+  title: "Tambacan Waste App",
   description: "UI for residents management",
 };
 

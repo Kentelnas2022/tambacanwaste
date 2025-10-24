@@ -128,42 +128,72 @@ export default function Schedule() {
 
   // Archive a schedule
   const handleArchive = async (sched) => {
-    const confirm = await Swal.fire({
-      title: "Archive Schedule?",
-      text: "This will move the schedule to the archive list.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Yes, archive it",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-    });
-    if (!confirm.isConfirmed) return;
+  const confirm = await Swal.fire({
+    title: "Archive Schedule?",
+    text: "This will move the schedule to the archive list.",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonText: "Yes, archive it",
+    cancelButtonText: "Cancel",
+    confirmButtonColor: "#2563eb",
+  });
+  if (!confirm.isConfirmed) return;
 
-    const archivedItem = { ...sched, schedule_id: undefined };
+  // Ensure that required fields exist before archiving
+  if (!sched.schedule_id || !sched.date || !sched.purok || !sched.day) {
+    return Swal.fire("Error", "Missing required schedule information.", "error");
+  }
 
+  // Create an archived schedule object without the schedule_id
+  const archivedItem = {
+    schedule_id: sched.schedule_id, // Keep the reference to the original schedule
+    date: sched.date || null,
+    purok: sched.purok || null,
+    day: sched.day || null,
+    waste_type: sched.waste_type || null,
+    status: sched.status || "not-started", // Default to "not-started" if empty
+    start_time: sched.start_time || null,
+    end_time: sched.end_time || null,
+    plan: sched.plan || "A", // Default to "A" if empty
+    route_points: sched.route_points || "[]", // Ensure JSONB field is correctly formatted
+    scheduled_start: null,
+    scheduled_end: null,
+    actual_end: null,
+    created_at: new Date().toISOString(), // Using the current date for creation
+  };
+
+  try {
+    // Insert the schedule into archived_schedules
     const { error: insertError } = await supabase
       .from("archived_schedules")
       .insert([archivedItem]);
 
-    if (insertError)
+    if (insertError) {
+      console.error("Insert Error:", insertError.message);
       return Swal.fire("Error", "Failed to archive schedule", "error");
+    }
 
+    // Delete the schedule from the original schedules table
     const { error: deleteError } = await supabase
       .from("schedules")
       .delete()
       .eq("schedule_id", sched.schedule_id);
 
-    if (deleteError)
-      return Swal.fire(
-        "Error",
-        "Failed to remove schedule from main table",
-        "error"
-      );
+    if (deleteError) {
+      console.error("Delete Error:", deleteError.message);
+      return Swal.fire("Error", "Failed to remove schedule from main table", "error");
+    }
 
+    // Fetch updated schedules and archived schedules after the operation
     await fetchSchedules();
     await fetchArchived();
+
     Swal.fire("Archived!", "Schedule has been archived successfully.", "success");
-  };
+  } catch (err) {
+    console.error("Error during archive operation:", err);
+    Swal.fire("Error", "Something went wrong during archiving. Please check console.", "error");
+  }
+};
 
   // Restore archived schedule
   const handleRestore = async (sched) => {
@@ -341,65 +371,89 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* Archive Modal */}
-      {isArchiveModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              <ArchiveBoxArrowDownIcon className="w-6 h-6 text-gray-600" />
-              Archived Schedules
-            </h3>
-            <table className="min-w-full text-sm table-auto border">
-              <thead>
-                <tr className="bg-gray-100 text-gray-700">
-                  <th className="py-3 px-4 text-left">Date</th>
-                  <th className="py-3 px-4 text-left">Purok</th>
-                  <th className="py-3 px-4 text-left">Time</th>
-                  <th className="py-3 px-4 text-left">Plan</th>
-                  <th className="py-3 px-4 text-left">Waste Type</th>
-                  <th className="py-3 px-4 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {archivedSchedules.map((sched) => (
-                  <tr key={sched.schedule_id} className="hover:bg-gray-50">
-                    <td className="py-3 px-4">{formatDate(sched.date, sched.day)}</td>
-                    <td className="py-3 px-4">Purok {sched.purok}</td>
-                    <td className="py-3 px-4">
-                      {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
-                    </td>
-                    <td className="py-3 px-4">{sched.plan}</td>
-                    <td className="py-3 px-4">{sched.waste_type}</td>
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => handleRestore(sched)}
-                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded transition-all duration-200 hover:scale-105"
-                      >
-                        Restore
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {archivedSchedules.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="text-center py-5 text-gray-500 italic">
-                      No archived schedules
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={() => setIsArchiveModalOpen(false)}
-                className="px-4 py-2 border rounded"
+     {/* Archive Modal */}
+{isArchiveModalOpen && (
+  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50 transition-all duration-300">
+    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100 animate-fadeIn">
+      {/* Header */}
+      <div className="flex justify-between items-center border-b px-6 py-4 bg-gray-50">
+        <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+          <ArchiveBoxArrowDownIcon className="w-6 h-6 text-gray-600" />
+          Archived Schedules
+        </h3>
+        <button
+          onClick={() => setIsArchiveModalOpen(false)}
+          className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Table Section */}
+      <div className="overflow-y-auto max-h-[65vh] p-6">
+        <table className="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+          <thead>
+            <tr className="bg-gray-100 text-gray-700 text-sm uppercase">
+              <th className="py-3 px-4 text-left">Date</th>
+              <th className="py-3 px-4 text-left">Purok</th>
+              <th className="py-3 px-4 text-left">Time</th>
+              <th className="py-3 px-4 text-left">Plan</th>
+              <th className="py-3 px-4 text-left">Waste Type</th>
+              <th className="py-3 px-4 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {archivedSchedules.map((sched) => (
+              <tr
+                key={sched.schedule_id}
+                className="hover:bg-gray-50 transition-colors duration-200"
               >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <td className="py-3 px-4 text-gray-800">
+                  {formatDate(sched.date, sched.day)}
+                </td>
+                <td className="py-3 px-4 text-gray-700">Purok {sched.purok}</td>
+                <td className="py-3 px-4 text-gray-700">
+                  {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
+                </td>
+                <td className="py-3 px-4 text-gray-700">{sched.plan}</td>
+                <td className="py-3 px-4 text-gray-700">{sched.waste_type}</td>
+                <td className="py-3 px-4 text-center">
+                  <button
+                    onClick={() => handleRestore(sched)}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 shadow-sm"
+                  >
+                    Restore
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            {archivedSchedules.length === 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="text-center py-6 text-gray-500 italic"
+                >
+                  No archived schedules found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div className="flex justify-end border-t px-6 py-4 bg-gray-50">
+        <button
+          onClick={() => setIsArchiveModalOpen(false)}
+          className="px-5 py-2 text-gray-700 hover:text-gray-900 border rounded-lg hover:bg-gray-100 transition-all duration-200"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Add Schedule Modal */}
       {isModalOpen && (
