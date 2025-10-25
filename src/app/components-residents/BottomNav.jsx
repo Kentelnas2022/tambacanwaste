@@ -5,26 +5,22 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Home,
-  BookOpen, // Replaces ClipboardList
+  BookOpen,
   AlertTriangle,
   User,
-  LogOut, // ✅ Added Logout icon
+  LogOut,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/supabaseClient"; // ✅ Added Supabase client for logout
+import { supabase } from "@/supabaseClient";
 
-// --- Props ---
-// onOpenReport: function to open the report modal
-// onOpenEducation: function to open the education modal
 export default function BottomNav({ onOpenReport, onOpenEducation }) {
   const router = useRouter();
   const pathname = usePathname();
   const [activePage, setActivePage] = useState("dashboard");
 
-  // ✅ UPDATED: This effect no longer checks for "/history"
   useEffect(() => {
     const currentPath = pathname || "";
-    let newActivePage = "dashboard"; // Default
+    let newActivePage = "dashboard";
     if (currentPath.includes("/profile")) {
       newActivePage = "profile";
     }
@@ -32,7 +28,6 @@ export default function BottomNav({ onOpenReport, onOpenEducation }) {
     localStorage.setItem("activePage", newActivePage);
   }, [pathname]);
 
-  // Function to handle page navigation
   const handleNav = (key, href) => {
     setActivePage(key);
     localStorage.setItem("activePage", key);
@@ -40,17 +35,16 @@ export default function BottomNav({ onOpenReport, onOpenEducation }) {
     router.push(href);
   };
 
-  // ✅ NEW: Function to handle user logout
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // Reset active page and redirect to home/login
     setActivePage("dashboard");
     localStorage.setItem("activePage", "dashboard");
     router.push("/");
   };
 
   // --- ✅ UPDATED: navItems array ---
-  // Order: Home, Education, Report (central), Profile, Logout
+  // All icons now use 'strokeWidth' for a consistent, minimal active state
+  // instead of 'fill', which can look heavy.
   const navItems = [
     {
       key: "dashboard",
@@ -58,21 +52,21 @@ export default function BottomNav({ onOpenReport, onOpenEducation }) {
       icon: (isActive) => (
         <Home
           className="w-6 h-6"
-          fill={isActive ? "currentColor" : "none"}
+          strokeWidth={isActive ? 2.5 : 2} // ✅ Changed from 'fill'
         />
       ),
       onClick: () => handleNav("dashboard", "/residents"),
     },
     {
       key: "education",
-      label: "Education", // ✅ Renamed from "Learn"
+      label: "Education",
       icon: (isActive) => (
         <BookOpen
           className="w-6 h-6"
-          strokeWidth={isActive ? 2.5 : 2}
+          strokeWidth={isActive ? 2.5 : 2} // Unchanged, already good
         />
       ),
-      onClick: onOpenEducation, // Uses the prop
+      onClick: onOpenEducation,
     },
     {
       key: "report",
@@ -87,48 +81,44 @@ export default function BottomNav({ onOpenReport, onOpenEducation }) {
       icon: (isActive) => (
         <User
           className="w-6 h-6"
-          fill={isActive ? "currentColor" : "none"}
+          strokeWidth={isActive ? 2.5 : 2} // ✅ Changed from 'fill'
         />
       ),
       onClick: () => handleNav("profile", "/profile"),
     },
     {
       key: "logout",
-      label: "Logout", // ✅ Added Logout
+      label: "Logout",
       icon: (isActive) => (
         <LogOut
           className="w-6 h-6"
-          strokeWidth={isActive ? 2.5 : 2}
+          strokeWidth={isActive ? 2.5 : 2} // Unchanged, already good
         />
       ),
-      onClick: handleLogout, // Uses new logout function
+      onClick: handleLogout,
     },
   ];
 
   return (
-    // This JSX does not need to change. The logic below
-    // correctly handles the new 5-item array.
     <div className="fixed bottom-0 left-0 z-30 w-full h-16 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.08)] border-t border-gray-200 flex items-center justify-center md:hidden">
       <AnimatePresence>
-        {/* This map loops through all 5 items */}
         {navItems.map((item) => {
-          // This finds "Report" and renders the invisible spacer
           if (item.isCentral) {
             return <div key={item.key} className="flex-1" />;
           }
 
           const isActive = activePage === item.key;
 
-          // This renders "Home", "Education", "Profile", and "Logout"
           return (
             <button
               key={item.key}
               onClick={item.onClick}
               className="relative flex flex-1 h-full flex-col items-center justify-center"
             >
+              {/* This 'div' is now the relative parent for the new indicator */}
               <div
                 className={`relative z-10 flex flex-col items-center gap-0.5 transition-colors ${
-                  isActive ? "text-green-600" : "text-gray-500 hover:text-gray-700"
+                  isActive ? "text-red-600" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
                 {item.icon(isActive)}
@@ -139,22 +129,27 @@ export default function BottomNav({ onOpenReport, onOpenEducation }) {
                 >
                   {item.label}
                 </span>
+
+                {/* --- ✅ ADDED: New minimal dot indicator --- */}
+                {/* This replaces the old background pill. */}
+                {isActive && (
+                  <motion.div
+                    layoutId="active-nav-dot" // New layoutId
+                    className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-green-600 rounded-full"
+                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  />
+                )}
+                {/* --- End of new indicator --- */}
               </div>
 
-              {/* The animated pill will only appear for "Home" or "Profile" */}
-              {isActive && (
-                <motion.div
-                  layoutId="active-nav-pill"
-                  className="absolute inset-x-2.5 inset-y-2.5 bg-green-50 rounded-xl z-0"
-                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                />
-              )}
+              {/* --- ✅ DELETED: Old "pill" indicator --- */}
+              {/* The motion.div that was here has been removed. */}
             </button>
           );
         })}
       </AnimatePresence>
 
-      {/* This renders the central "Report" button on top of the spacer */}
+      {/* This central "Report" button is unchanged */}
       <button
         onClick={onOpenReport}
         className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/3 z-40"

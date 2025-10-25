@@ -17,10 +17,10 @@ import { AnimatePresence, motion } from "framer-motion";
 
 // Helper component for a cleaner "Empty State"
 const EmptyState = ({ icon: Icon, title, description }) => (
-  <div className="text-center p-12 bg-white rounded-lg border-2 border-dashed border-slate-300">
-    <Icon className="mx-auto h-12 w-12 text-slate-400" />
-    <h3 className="mt-2 text-sm font-semibold text-slate-900">{title}</h3>
-    <p className="mt-1 text-sm text-slate-500">{description}</p>
+  <div className="text-center p-12 bg-white rounded-lg border-2 border-dashed border-stone-300">
+    <Icon className="mx-auto h-12 w-12 text-stone-400" />
+    <h3 className="mt-2 text-sm font-semibold text-stone-900">{title}</h3>
+    <p className="mt-1 text-sm text-stone-500">{description}</p>
   </div>
 );
 
@@ -85,7 +85,6 @@ export default function Reports() {
       const { data: reportsData, error } = await supabase
         .from("reports")
         .select(
-          // ✅ ADDED user_id TO THE SELECT
           "id, title, description, file_urls, user_id, location, status, official_response, created_at"
         )
         .order("created_at", { ascending: false });
@@ -171,119 +170,120 @@ export default function Reports() {
 
   // --- Inside Reports.jsx ---
 
-const handleRespond = async (report, resolve = false) => {
-  const responseText = report.draftResponse || ""; // Get text from state
-  const nextStatus = resolve ? "Resolved" : "In Progress";
+  const handleRespond = async (report, resolve = false) => {
+    const responseText = report.draftResponse || ""; // Get text from state
+    const nextStatus = resolve ? "Resolved" : "In Progress";
 
-  // --- Input Validation ---
-  if (!responseText && resolve) {
-    Swal.fire("Response Required", "Please add a response before marking as resolved.", "warning");
-    return;
-  }
-  // Allow marking "In Progress" without a response, but still require response text to send one
-  // if (!responseText && !resolve) { // This check might be too strict if you just want to mark "In Progress"
-  //   Swal.fire("Response Required", "Please add a response.", "warning");
-  //   return;
-  // }
-
-  setProcessingIds((prev) => [...prev, report.id]);
-
-  try {
-    // --- 1. Update report_status table (using upsert) ---
-    const statusPayload = {
-      report_id: report.id,
-      status: nextStatus,
-      official_response: responseText, // Also save here for consistency if needed
-      updated_by: official?.user_id || null,
-      // location: report.location || null, // location usually doesn't change here
-      updated_at: new Date().toISOString(),
-    };
-    const { error: upsertStatusError } = await supabase
-      .from("report_status")
-      .upsert(statusPayload, { onConflict: "report_id" });
-    if (upsertStatusError) throw upsertStatusError;
-
-    // --- 2. Update reports table (optional, but good practice) ---
-    const { error: updateReportError } = await supabase
-      .from("reports")
-      .update({
-        status: nextStatus,
-        official_response: responseText, // Save here too if this is your main source
-      })
-      .eq("id", report.id);
-    if (updateReportError) throw updateReportError;
-
-    // --- 3. Upsert Notification (CRITICAL FIX) ---
-    if (report.user_id) { // Ensure the report has a user associated
-      const notifPayload = {
-        user_id: report.user_id,
-        report_id: report.id, // Must match your UNIQUE constraint column
-        message: `Your report "${report.title || 'Untitled'}" status updated to ${nextStatus.toLowerCase()}.`,
-        status: nextStatus,
-        official_response: responseText, // *** This sends the response text ***
-        read: false, // Mark as unread on update
-        updated_at: new Date().toISOString(), // Update timestamp
-      };
-
-      console.log("Upserting notification:", notifPayload); // Debug log
-
-      // *** Use upsert with onConflict on the correct unique column ***
-      const { error: notifError } = await supabase
-        .from("notifications")
-        .upsert(notifPayload, {
-          onConflict: "report_id", // Make sure 'report_id' is your UNIQUE column
-        });
-
-      if (notifError) {
-        // Log error but don't necessarily stop the whole process
-        console.error("Failed to upsert notification:", notifError.message);
-        // Maybe show a less severe warning?
-        // Swal.fire("Warning", "Report updated, but failed to send notification update.", "warning");
-      } else {
-        console.log("Notification upsert successful for report:", report.id);
-      }
-    } else {
-      console.warn("Report user_id missing, cannot send notification for report:", report.id);
+    // --- Input Validation ---
+    if (!responseText && resolve) {
+      Swal.fire(
+        "Response Required",
+        "Please add a response before marking as resolved.",
+        "warning"
+      );
+      return;
     }
-    // --- End Notification Logic ---
 
-    // --- Success Feedback & State Update ---
-    Swal.fire({
-      icon: "success",
-      title: resolve ? "Resolved!" : "Response Saved!",
-      text: resolve
-        ? "Report marked as resolved and notification sent."
-        : "Response saved and notification sent.",
-      timer: 1800, // Slightly longer timer
-      showConfirmButton: false,
-    });
+    setProcessingIds((prev) => [...prev, report.id]);
 
-    // Update local state for the reports list
-    setReports((prev) =>
-      prev.map((r) =>
-        r.id === report.id
-          ? {
-              ...r,
-              latest_status: nextStatus,
-              official_response: responseText, // Update local state too
-              draftResponse: responseText, // Ensure draft matches saved response
-            }
-          : r
-      )
-    );
-    setRespondingToId(null); // Close the response text area
+    try {
+      // --- 1. Update report_status table (using upsert) ---
+      const statusPayload = {
+        report_id: report.id,
+        status: nextStatus,
+        official_response: responseText, // Also save here for consistency if needed
+        updated_by: official?.user_id || null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error: upsertStatusError } = await supabase
+        .from("report_status")
+        .upsert(statusPayload, { onConflict: "report_id" });
+      if (upsertStatusError) throw upsertStatusError;
 
-  } catch (err) {
-    console.error("Error in handleRespond:", err);
-    Swal.fire({
-      icon: "error",
-      title: "Update Failed",
-      text: err.message || "Failed to save response or update status.",
-    });
-  } finally {
-    setProcessingIds((prev) => prev.filter((id) => id !== report.id));
-  }
-};
+      // --- 2. Update reports table (optional, but good practice) ---
+      const { error: updateReportError } = await supabase
+        .from("reports")
+        .update({
+          status: nextStatus,
+          official_response: responseText, // Save here too if this is your main source
+        })
+        .eq("id", report.id);
+      if (updateReportError) throw updateReportError;
+
+      // --- 3. Upsert Notification (CRITICAL FIX) ---
+      if (report.user_id) {
+        // Ensure the report has a user associated
+        const notifPayload = {
+          user_id: report.user_id,
+          report_id: report.id, // Must match your UNIQUE constraint column
+          message: `Your report "${
+            report.title || "Untitled"
+          }" status updated to ${nextStatus.toLowerCase()}.`,
+          status: nextStatus,
+          official_response: responseText, // *** This sends the response text ***
+          read: false, // Mark as unread on update
+          updated_at: new Date().toISOString(), // Update timestamp
+        };
+
+        console.log("Upserting notification:", notifPayload); // Debug log
+
+        // *** Use upsert with onConflict on the correct unique column ***
+        const { error: notifError } = await supabase
+          .from("notifications")
+          .upsert(notifPayload, {
+            onConflict: "report_id", // Make sure 'report_id' is your UNIQUE column
+          });
+
+        if (notifError) {
+          // Log error but don't necessarily stop the whole process
+          console.error("Failed to upsert notification:", notifError.message);
+        } else {
+          console.log("Notification upsert successful for report:", report.id);
+        }
+      } else {
+        console.warn(
+          "Report user_id missing, cannot send notification for report:",
+          report.id
+        );
+      }
+      // --- End Notification Logic ---
+
+      // --- Success Feedback & State Update ---
+      Swal.fire({
+        icon: "success",
+        title: resolve ? "Resolved!" : "Response Saved!",
+        text: resolve
+          ? "Report marked as resolved and notification sent."
+          : "Response saved and notification sent.",
+        timer: 1800, // Slightly longer timer
+        showConfirmButton: false,
+      });
+
+      // Update local state for the reports list
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === report.id
+            ? {
+                ...r,
+                latest_status: nextStatus,
+                official_response: responseText, // Update local state too
+                draftResponse: responseText, // Ensure draft matches saved response
+              }
+            : r
+        )
+      );
+      setRespondingToId(null); // Close the response text area
+    } catch (err) {
+      console.error("Error in handleRespond:", err);
+      Swal.fire({
+        icon: "error",
+        title: "Update Failed",
+        text: err.message || "Failed to save response or update status.",
+      });
+    } finally {
+      setProcessingIds((prev) => prev.filter((id) => id !== report.id));
+    }
+  };
 
   const archiveReport = async (report) => {
     try {
@@ -296,6 +296,8 @@ const handleRespond = async (report, resolve = false) => {
         official_response: report.official_response || "",
         created_at: report.created_at,
         archived_at: new Date().toISOString(),
+        location: report.location || "Unknown", // ✅ Add this line
+
       };
       const { error: insertError } = await supabase
         .from("archive")
@@ -364,9 +366,9 @@ const handleRespond = async (report, resolve = false) => {
 
   const renderStatusBadge = (status) => {
     const s = status?.toLowerCase() || "pending";
-    let className = "bg-yellow-100 text-yellow-800"; // Default: Pending
-    if (s === "in progress") className = "bg-blue-100 text-blue-800";
-    if (s === "resolved") className = "bg-green-100 text-green-800";
+    let className = "bg-amber-100 text-amber-800"; // Default: Pending
+    if (s === "in progress") className = "bg-sky-100 text-sky-800";
+    if (s === "resolved") className = "bg-emerald-100 text-emerald-800";
     return (
       <span
         className={`px-3 py-1 rounded-full text-xs font-medium ${className}`}
@@ -379,7 +381,7 @@ const handleRespond = async (report, resolve = false) => {
   const renderReportList = (list, isArchived = false) => {
     if (loading) {
       return (
-        <p className="text-slate-500 text-center">Loading reports...</p>
+        <p className="text-stone-500 text-center">Loading reports...</p>
       );
     }
     if (list.length === 0) {
@@ -404,16 +406,16 @@ const handleRespond = async (report, resolve = false) => {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.2 }}
-        className="flex flex-col overflow-hidden bg-white border rounded-lg shadow-sm border-slate-200 transition-shadow hover:shadow-md"
+        className="flex flex-col overflow-hidden bg-white border rounded-lg shadow-md border-stone-200 transition-all duration-200 ease-in-out hover:shadow-lg"
       >
         {/* Card Body */}
         <div className="p-5 flex-grow">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">
+              <h3 className="text-lg font-semibold text-stone-900">
                 {report.title}
               </h3>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-stone-500 mt-1">
                 {isArchived ? "Archived:" : "Submitted:"}{" "}
                 {new Date(
                   isArchived ? report.archived_at : report.created_at
@@ -425,17 +427,17 @@ const handleRespond = async (report, resolve = false) => {
             )}
           </div>
 
-          <p className="text-sm text-slate-600 flex items-center gap-1.5 mb-3">
+          <p className="text-sm text-stone-600 flex items-center gap-1.5 mb-3">
             <MapPin size={14} />
             {report.location || "No location provided"}
           </p>
 
-          <p className="text-sm text-slate-700">{report.description}</p>
+          <p className="text-sm text-stone-700">{report.description}</p>
 
           {/* Attachments Section */}
           {report.file_urls?.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-200">
-              <p className="text-sm font-medium text-gray-700 flex items-center gap-1.5 mb-2">
+            <div className="mt-4 pt-4 border-t border-stone-200">
+              <p className="text-sm font-medium text-stone-700 flex items-center gap-1.5 mb-2">
                 <Paperclip size={14} /> Attachments
               </p>
               <div className="flex gap-2 flex-wrap">
@@ -445,7 +447,7 @@ const handleRespond = async (report, resolve = false) => {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2.5 py-1 bg-slate-100 text-slate-700 font-medium rounded-full text-xs hover:bg-slate-200"
+                    className="px-2.5 py-1 bg-stone-100 text-stone-700 font-medium rounded-full text-xs hover:bg-stone-200"
                   >
                     Attachment {idx + 1}
                   </a>
@@ -456,11 +458,11 @@ const handleRespond = async (report, resolve = false) => {
 
           {/* Official Response Section */}
           {report.official_response && (
-            <div className="mt-4 pt-4 border-t border-slate-200 bg-slate-100 border-l-4 border-slate-500 p-3 rounded-r-md">
-              <p className="text-sm font-medium text-slate-800 mb-1">
+            <div className="mt-4 pt-4 border-t border-stone-200 bg-emerald-50 border-l-4 border-emerald-500 p-3 rounded-r-md">
+              <p className="text-sm font-semibold text-emerald-900 mb-1">
                 Official Response:
               </p>
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-emerald-800">
                 {report.official_response}
               </p>
             </div>
@@ -469,13 +471,13 @@ const handleRespond = async (report, resolve = false) => {
 
         {/* Card Footer (Action Area) */}
         {!isArchived && official && (
-          <div className="p-4 bg-slate-50 border-t border-slate-200">
+          <div className="p-4 bg-stone-50 border-t border-stone-200">
             {report.latest_status === "Resolved" ? (
               // --- IF RESOLVED ---
               <div className="flex justify-end">
                 <button
                   onClick={() => archiveReport(report)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-100"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-stone-700 border border-stone-300 hover:bg-stone-100"
                 >
                   <Archive size={16} /> Archive
                 </button>
@@ -490,7 +492,7 @@ const handleRespond = async (report, resolve = false) => {
               >
                 <textarea
                   ref={responseTextAreaRef}
-                  className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                  className="w-full border border-stone-300 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   placeholder="Type your response here..."
                   value={report.draftResponse || ""}
                   onChange={(e) => handleDraftResponseChange(e, report.id)}
@@ -500,7 +502,7 @@ const handleRespond = async (report, resolve = false) => {
                     <button
                       onClick={() => handleRespond(report, false)}
                       disabled={processingIds.includes(report.id)}
-                      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
                       <MessageSquare size={16} /> Respond
                     </button>
@@ -517,7 +519,7 @@ const handleRespond = async (report, resolve = false) => {
                   </div>
                   <button
                     onClick={() => setRespondingToId(null)}
-                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-100"
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-stone-700 border border-stone-300 hover:bg-stone-100"
                   >
                     <X size={16} /> Cancel
                   </button>
@@ -531,13 +533,13 @@ const handleRespond = async (report, resolve = false) => {
               >
                 <button
                   onClick={() => setRespondingToId(report.id)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-slate-700 text-white hover:bg-slate-800"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
                 >
                   <CornerDownLeft size={16} /> Add Response
                 </button>
                 <button
                   onClick={() => archiveReport(report)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-100"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-white text-stone-700 border border-stone-300 hover:bg-stone-100"
                 >
                   <Archive size={16} /> Archive
                 </button>
@@ -548,7 +550,7 @@ const handleRespond = async (report, resolve = false) => {
 
         {/* --- ARCHIVED CARD FOOTER --- */}
         {isArchived && (
-          <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+          <div className="p-4 bg-stone-50 border-t border-stone-200 flex justify-end">
             <button
               onClick={() => restoreReport(report)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-green-700 border border-green-300 text-sm font-medium hover:bg-green-50"
@@ -562,17 +564,17 @@ const handleRespond = async (report, resolve = false) => {
   };
 
   return (
-    <div className="">
+    <div className=" min-h-screen py-8 md:py-12">
       <div className="px-4 mx-auto sm:px-6 max-w-5xl">
         {/* --- MODIFIED SECTION START --- */}
         {/* Page Header & Toggle Button */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
           {/* Page Header */}
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            <h1 className="text-3xl font-bold tracking-tight text-stone-900">
               Citizen Reports
             </h1>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-stone-600">
               Respond to, resolve, and manage all submitted reports.
             </p>
           </div>
@@ -581,16 +583,16 @@ const handleRespond = async (report, resolve = false) => {
           <div>
             <button
               onClick={() => setShowArchived(!showArchived)}
-              className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium text-gray-700 transition bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 w-full sm:w-auto" // Added w-full sm:w-auto for responsiveness
+              className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium text-stone-700 transition bg-white border border-stone-300 rounded-lg shadow-sm hover:bg-stone-50 w-full sm:w-auto" // Added w-full sm:w-auto for responsiveness
             >
               {showArchived ? (
                 <>
-                  <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600" />
+                  <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 text-stone-600" />
                   View Active
                 </>
               ) : (
                 <>
-                  <Archive className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
+                  <Archive className="w-4 h-4 sm:w-5 sm:h-5 text-stone-500" />
                   View Archived
                 </>
               )}

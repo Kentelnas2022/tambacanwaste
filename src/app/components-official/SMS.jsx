@@ -8,18 +8,13 @@ import {
   Archive,
   RotateCcw,
   Clock,
-  Inbox,
-  MessageSquare,
+  MessageSquare, // Removed Inbox
   History,
   X,
-  Calendar,
+  // Removed Calendar
 } from "lucide-react";
 // --- FIX: Reverted to project-style import ---
 import Swal from "sweetalert2";
-
-// --- REMOVED: Supabase client initialization ---
-// This should be handled in your "@/supabaseClient" file
-
 
 // --- Modal Component ---
 function HistoryModal({ isOpen, onClose, history, onArchive, onRestore }) {
@@ -166,24 +161,7 @@ function HistoryItem({ entry, action, onClick }) {
   );
 }
 
-// --- Upgraded Analytics Card ---
-function AnalyticsCard({ icon, label, value, iconBgClass }) {
-  return (
-    <div className="flex items-center gap-4 p-4 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all">
-      <div
-        className={`flex items-center justify-center w-10 h-10 ${
-          iconBgClass || "bg-emerald-50"
-        } rounded-lg`}
-      >
-        {icon}
-      </div>
-      <div className="flex flex-col leading-tight">
-        <p className="text-sm text-gray-600 font-medium">{label}</p>
-        <p className="text-2xl font-semibold text-gray-900">{value}</p>
-      </div>
-    </div>
-  );
-}
+// --- DELETED: AnalyticsCard ---
 
 // --- Main SMS Component ---
 export default function SMS() {
@@ -194,14 +172,14 @@ export default function SMS() {
   const [schedule, setSchedule] = useState(false);
   const [scheduleTime, setScheduleTime] = useState("");
   const [history, setHistory] = useState([]);
-  const [sentToday, setSentToday] = useState(0);
-  const [totalMessages, setTotalMessages] = useState(0);
+  // --- DELETED: sentToday ---
+  // --- DELETED: totalMessages ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSending, setIsSending] = useState(false); // Add sending state
 
   useEffect(() => {
     fetchHistory();
-    fetchStats();
+    // --- DELETED: fetchStats() call ---
   }, []);
 
   const fetchHistory = async () => {
@@ -214,23 +192,7 @@ export default function SMS() {
     else console.error("Error fetching SMS history:", error);
   };
 
-  const fetchStats = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const { data: todayData } = await supabase
-      .from("sms_archive")
-      .select("*")
-      .gte("sent_at", today.toISOString());
-
-    setSentToday(todayData?.length || 0);
-
-    const { count } = await supabase
-      .from("sms_archive")
-      .select("id", { count: "exact" });
-
-    setTotalMessages(count || 0);
-  };
+  // --- DELETED: fetchStats function ---
 
   const archiveMessage = async (id) => {
     // --- DESIGN UPGRADE for Archive Confirmation ---
@@ -238,15 +200,15 @@ export default function SMS() {
       title: "Archive Message?",
       text: "This message will be moved to the archive.",
       icon: "warning",
-      iconColor: '#f59e0b', // Amber
+      iconColor: "#f59e0b", // Amber
       showCancelButton: true,
       confirmButtonColor: "#f59e0b", // Amber
       cancelButtonColor: "#d1d5db", // Gray
       confirmButtonText: "Yes, archive it!",
       customClass: {
-        title: 'text-2xl font-semibold text-gray-900',
-        popup: 'rounded-2xl shadow-lg',
-      }
+        title: "text-2xl font-semibold text-gray-900",
+        popup: "rounded-2xl shadow-lg",
+      },
     });
 
     if (result.isConfirmed) {
@@ -255,9 +217,9 @@ export default function SMS() {
       // --- DESIGN UPGRADE for Archive Success ---
       Swal.fire({
         toast: true,
-        position: 'top-end',
-        icon: 'success',
-        title: 'Message Archived',
+        position: "top-end",
+        icon: "success",
+        title: "Message Archived",
         showConfirmButton: false,
         timer: 2000,
         timerProgressBar: true,
@@ -271,15 +233,15 @@ export default function SMS() {
       title: "Restore Message?",
       text: "This message will be moved back to recent.",
       icon: "question",
-      iconColor: '#10b981', // Emerald
+      iconColor: "#10b981", // Emerald
       showCancelButton: true,
       confirmButtonColor: "#10b981", // Emerald
       cancelButtonColor: "#d1d5db",
       confirmButtonText: "Yes, restore it!",
       customClass: {
-        title: 'text-2xl font-semibold text-gray-900',
-        popup: 'rounded-2xl shadow-lg',
-      }
+        title: "text-2xl font-semibold text-gray-900",
+        popup: "rounded-2xl shadow-lg",
+      },
     });
 
     if (result.isConfirmed) {
@@ -291,9 +253,9 @@ export default function SMS() {
       // --- DESIGN UPGRADE for Restore Success ---
       Swal.fire({
         toast: true,
-        position: 'top-end',
-        icon: 'success',
-        title: 'Message Restored',
+        position: "top-end",
+        icon: "success",
+        title: "Message Restored",
         showConfirmButton: false,
         timer: 2000,
         timerProgressBar: true,
@@ -329,23 +291,23 @@ export default function SMS() {
     e.preventDefault();
     if (!message.trim()) {
       Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
-        text: 'Please enter a message before sending.',
-        confirmButtonColor: '#ef4444', // Red
+        icon: "error",
+        title: "Oops...",
+        text: "Please enter a message before sending.",
+        confirmButtonColor: "#ef4444", // Red
         customClass: {
-          title: 'text-2xl font-semibold text-gray-900',
-          popup: 'rounded-2xl shadow-lg',
-        }
+          title: "text-2xl font-semibold text-gray-900",
+          popup: "rounded-2xl shadow-lg",
+        },
       });
       return;
     }
-    
+
     setIsSending(true);
 
     try {
       const testNumber = "+639924794425"; // Your hardcoded test number
-      
+
       // --- FIX: Use relative path for API route ---
       const response = await fetch("/api/send-sms", {
         method: "POST",
@@ -357,16 +319,18 @@ export default function SMS() {
 
       if (!result.success) {
         Swal.fire({
-          icon: 'error',
-          title: 'Send Failed',
-          text: "Failed to send SMS via Vonage: " + (result.error || "Unknown error"),
-          confirmButtonColor: '#ef4444',
+          icon: "error",
+          title: "Send Failed",
+          text:
+            "Failed to send SMS via Vonage: " +
+            (result.error || "Unknown error"),
+          confirmButtonColor: "#ef4444",
           customClass: {
-            title: 'text-2xl font-semibold text-gray-900',
-            popup: 'rounded-2xl shadow-lg',
-          }
+            title: "text-2xl font-semibold text-gray-900",
+            popup: "rounded-2xl shadow-lg",
+          },
         });
-        setIsSending(false); 
+        setIsSending(false);
         return;
       }
 
@@ -385,32 +349,32 @@ export default function SMS() {
       if (error) {
         console.error("Error archiving SMS:", error);
         Swal.fire({
-          icon: 'error',
-          title: 'Archive Failed',
-          text: 'The message sent, but failed to save to history.',
-          confirmButtonColor: '#ef4444',
+          icon: "error",
+          title: "Archive Failed",
+          text: "The message sent, but failed to save to history.",
+          confirmButtonColor: "#ef4444",
           customClass: {
-            title: 'text-2xl font-semibold text-gray-900',
-            popup: 'rounded-2xl shadow-lg',
-          }
+            title: "text-2xl font-semibold text-gray-900",
+            popup: "rounded-2xl shadow-lg",
+          },
         });
-        setIsSending(false); 
+        setIsSending(false);
         return;
       }
 
       fetchHistory();
-      fetchStats();
+      // --- DELETED: fetchStats() call ---
       setMessage("");
       setCharCount(0);
       setSchedule(false);
       setScheduleTime("");
       setMessageType("custom");
-      setIsSending(false); 
+      setIsSending(false);
 
       // --- DESIGN UPGRADE for Success Alert ---
       Swal.fire({
         // --- FIX: Removed redundant 'icon' and 'iconColor' ---
-        title: '✅ SMS Sent!', // --- FIX: Added emoji to title ---
+        title: "✅ SMS Sent!", // --- FIX: Added emoji to title ---
         html: `
           <div class="text-left text-sm text-gray-700 px-2 sm:px-4">
             <p class="mb-3">Your message was successfully sent via Vonage.</p>
@@ -426,27 +390,27 @@ export default function SMS() {
             </div>
           </div>
         `,
-        confirmButtonText: 'Great!',
-        confirmButtonColor: '#10b981', // Emerald
+        confirmButtonText: "Great!",
+        confirmButtonColor: "#10b981", // Emerald
         customClass: {
-          popup: 'rounded-2xl shadow-lg',
-          title: 'text-2xl font-semibold text-gray-900 pt-5',
-          htmlContainer: 'mt-0 px-0',
-          confirmButton: 'px-6 py-2 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-emerald-300',
+          popup: "rounded-2xl shadow-lg",
+          title: "text-2xl font-semibold text-gray-900 pt-5",
+          htmlContainer: "mt-0 px-0",
+          confirmButton:
+            "px-6 py-2 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-emerald-300",
         },
       });
-      
     } catch (err) {
       console.error("Error submitting form:", err);
       Swal.fire({
-        icon: 'error',
-        title: 'A Client Error Occurred',
+        icon: "error",
+        title: "A Client Error Occurred",
         text: `An error occurred: ${err.message}`,
-        confirmButtonColor: '#ef4444',
+        confirmButtonColor: "#ef4444",
         customClass: {
-          title: 'text-2xl font-semibold text-gray-900',
-          popup: 'rounded-2xl shadow-lg',
-        }
+          title: "text-2xl font-semibold text-gray-900",
+          popup: "rounded-2xl shadow-lg",
+        },
       });
       setIsSending(false); // Stop loading
     }
@@ -455,26 +419,7 @@ export default function SMS() {
   return (
     <section className="w-full min-h-screen p-4 sm:p-8">
       <div className="w-full max-w-xl mx-auto space-y-6">
-        {/* Analytics */}
-        <div className="w-full">
-          <h2 className="text-xl font-semibold text-gray-900 mb-3">
-            Analytics
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <AnalyticsCard
-              icon={<Calendar className="w-5 h-5 text-emerald-600" />}
-              iconBgClass="bg-emerald-50"
-              label="Sent Today"
-              value={sentToday}
-            />
-            <AnalyticsCard
-              icon={<Inbox className="w-5 h-5 text-sky-600" />}
-              iconBgClass="bg-sky-50"
-              label="Total Sent"
-              value={totalMessages}
-            />
-          </div>
-        </div>
+        {/* --- DELETED: Analytics Section --- */}
 
         {/* Send SMS */}
         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -590,9 +535,25 @@ export default function SMS() {
             >
               {isSending ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   Sending...
                 </>
@@ -628,4 +589,3 @@ export default function SMS() {
     </section>
   );
 }
-
