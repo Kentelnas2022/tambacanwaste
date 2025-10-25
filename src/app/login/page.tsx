@@ -230,7 +230,7 @@ export default function Login() {
 
 
   // --- Login Handler (Keep as is) ---
-  const handleLogin = async (e) => {
+const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     const { error, data } = await supabase.auth.signInWithPassword({
