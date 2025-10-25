@@ -40,6 +40,20 @@ const onboardingScreens = [
   },
 ];
 
+
+interface LoginModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  email: string;
+  setEmail: (value: string) => void;
+  password: string;
+  setPassword: (value: string) => void;
+  showPassword: boolean;
+  setShowPassword: (value: boolean) => void;
+  handleLogin: (e: React.FormEvent<HTMLFormElement>) => void;
+  error: string | null;
+}
+
 // --- Login Modal Component (Keep as is) ---
 function LoginModal({
   isOpen,
@@ -52,7 +66,8 @@ function LoginModal({
   setShowPassword,
   handleLogin,
   error,
-}) {
+}: LoginModalProps) {
+
   const modalVariants = {
     hidden: { opacity: 0, scale: 0.95, y: 20 },
     visible: { opacity: 1, scale: 1, y: 0 },
