@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
-// ✅ Added new icons for consistency
 import { ArrowLeft, Edit, Camera } from "lucide-react";
 
 export default function Profile() {
@@ -12,8 +11,8 @@ export default function Profile() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [profile, setProfile] = useState({
     username: "",
@@ -23,15 +22,13 @@ export default function Profile() {
     avatar_url: "",
   });
 
-  const [selectedFile, setSelectedFile] = useState(null);
-
   const [passwordForm, setPasswordForm] = useState({
     current: "",
     new: "",
     confirm: "",
   });
 
-  // ✅ Fetch user and profile info (Unchanged)
+  // ✅ Fetch user and profile info
   useEffect(() => {
     const getProfile = async () => {
       setLoading(true);
@@ -44,23 +41,54 @@ export default function Profile() {
         return;
       }
 
-      let { data: profileData } = await supabase
-        .from("profiles")
-        .select("name, email, mobile, purok, avatar_url")
-        .eq("id", user.id)
-        .single();
-
-      if (!profileData) {
-        const { data: residentData } = await supabase
-          .from("residents")
-          .select("name, email, mobile, purok")
-          .eq("user_id", user.id)
+      try {
+        // 1️⃣ Fetch from users table using UID
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("uid, name, email, mobile_number, purok")
+          .eq("uid", user.id)
           .single();
 
-        if (residentData) profileData = { ...residentData, avatar_url: "" };
-      }
+        if (userError || !userData) {
+          console.error("User data not found:", userError);
+          Swal.fire("Not Found", "No user data found for your account", "info");
+          setLoading(false);
+          return;
+        }
 
-      if (profileData) {
+        // 2️⃣ Try fetching from profiles table using UID
+        let { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, name, email, mobile, purok, avatar_url")
+          .eq("id", user.id)
+          .single();
+
+        // 3️⃣ If profile does not exist, create it from users table
+        if (!profileData) {
+          const { error: insertError } = await supabase.from("profiles").upsert({
+            id: user.id, // same as UID
+            name: userData.name,
+            email: userData.email,
+            mobile: userData.mobile_number,
+            purok: userData.purok,
+            avatar_url: "",
+            created_at: new Date(),
+            updated_at: new Date(),
+          });
+
+          if (insertError) console.error("Profile insert error:", insertError);
+
+          profileData = {
+            id: user.id,
+            name: userData.name,
+            email: userData.email,
+            mobile: userData.mobile_number,
+            purok: userData.purok,
+            avatar_url: "",
+          };
+        }
+
+        // ✅ Set the profile state
         setProfile({
           username: profileData.name || "Unknown",
           email: profileData.email || "",
@@ -68,21 +96,23 @@ export default function Profile() {
           purok: profileData.purok || "",
           avatar_url: profileData.avatar_url || "/default-avatar.png",
         });
+      } catch (err) {
+        console.error("Error fetching profile:", err.message);
+        Swal.fire("Error", "Failed to load your profile.", "error");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
+
     getProfile();
   }, [router]);
 
-  // --- All your handler functions (handleChange, handleImageSelect, saveProfile, etc.) ---
-  // --- are perfectly fine. No changes needed to them. ---
-  
-  // ✅ Handle input changes (Unchanged)
+  // ✅ Handle input changes
   const handleChange = (e) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
   };
 
-  // ✅ Handle profile picture preview only (Unchanged)
+  // ✅ Handle profile picture selection
   const handleImageSelect = (e) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -92,7 +122,7 @@ export default function Profile() {
     setProfile((prev) => ({ ...prev, avatar_url: previewUrl }));
   };
 
-  // ✅ Save profile updates (including image upload if selected) (Unchanged)
+  // ✅ Save profile updates (with avatar upload)
   const saveProfile = async () => {
     setIsEditMode(false);
     setLoading(true);
@@ -118,12 +148,15 @@ export default function Profile() {
         return;
       }
 
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
       avatarUrl = urlData?.publicUrl;
     }
 
+    // Update profiles table
     await supabase.from("profiles").upsert({
-      id: user.id,
+      id: user.id, // UID
       name: profile.username,
       email: profile.email,
       mobile: profile.phone,
@@ -132,15 +165,16 @@ export default function Profile() {
       updated_at: new Date(),
     });
 
+    // Update users table
     await supabase
-      .from("residents")
+      .from("users")
       .update({
         name: profile.username,
         email: profile.email,
-        mobile: profile.phone,
+        mobile_number: profile.phone,
         purok: profile.purok,
       })
-      .eq("user_id", user.id);
+      .eq("uid", user.id);
 
     setProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
     setSelectedFile(null);
@@ -154,7 +188,7 @@ export default function Profile() {
     });
   };
 
-  // ✅ Change password securely (Unchanged)
+  // ✅ Password change handler
   const handleChangePassword = async () => {
     const { current, new: newPass, confirm } = passwordForm;
 
@@ -198,18 +232,14 @@ export default function Profile() {
     }
   };
 
-  // ✅ Logout (Unchanged)
+  // ✅ Logout
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // ✅ --- IMPROVEMENT: Use Skeleton Loader ---
-  // This shows a professional placeholder that matches your page layout
-  // and has the white background you requested for the content area.
-  if (loading) {
-    return <ProfileSkeleton />;
-  }
+  // ✅ Skeleton Loader
+  if (loading) return <ProfileSkeleton />;
 
   return (
     <div className="bg-gray-100 min-h-screen font-sans relative">
@@ -220,7 +250,6 @@ export default function Profile() {
             onClick={() => router.back()}
             className="p-2 rounded-full hover:bg-[#a30000] transition"
           >
-            {/* ✅ IMPROVEMENT: Consistent Lucide Icon */}
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-lg font-semibold">Profile</h1>
@@ -228,7 +257,6 @@ export default function Profile() {
             onClick={() => setIsEditMode(!isEditMode)}
             className="p-2 rounded-full hover:bg-[#a30000] transition"
           >
-            {/* ✅ IMPROVEMENT: Consistent Lucide Icon (w-5 is a good size for 'edit') */}
             <Edit className="w-5 h-5" />
           </button>
         </div>
@@ -240,7 +268,6 @@ export default function Profile() {
             {isEditMode && (
               <label className="absolute bottom-1 right-1 bg-[#8B0000] p-2 rounded-full text-white cursor-pointer hover:bg-[#a30000] transition">
                 <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
-                {/* ✅ IMPROVEMENT: Consistent Lucide Icon */}
                 <Camera className="w-4 h-4" />
               </label>
             )}
@@ -250,7 +277,7 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Info Section (Unchanged) */}
+      {/* Info Section */}
       <div className="bg-white rounded-t-3xl -mt-4 p-6">
         {!isEditMode ? (
           <>
@@ -270,8 +297,8 @@ export default function Profile() {
               </button>
               <button
                 onClick={() => setShowLogoutModal(true)}
-                className="w-full bg-red-100 rounded-2xl p-4 mt-3 text-left text-[#8B0000] font-semibold hover:bg-[#8B0000] hover:text-white transition"
-              >
+                class ="w-full bg-red-100 rounded-2xl p-4 mt-3 text-left text-[#8B0000] font-semibold hover:bg-[#8B0000] hover:text-white transition"
+               >
                 Logout
               </button>
             </div>
@@ -303,7 +330,7 @@ export default function Profile() {
         )}
       </div>
 
-      {/* Password Modal (Unchanged) */}
+      {/* Password Modal */}
       {showPasswordModal && (
         <Modal title="Change Password" onClose={() => setShowPasswordModal(false)}>
           <InputField
@@ -336,7 +363,7 @@ export default function Profile() {
         </Modal>
       )}
 
-      {/* Logout Modal (Unchanged) */}
+      {/* Logout Modal */}
       {showLogoutModal && (
         <Modal title="Logout" onClose={() => setShowLogoutModal(false)}>
           <p className="text-gray-700 mb-4 text-center">
@@ -362,26 +389,22 @@ export default function Profile() {
   );
 }
 
-/* --- ✅ NEW: SKELETON LOADER COMPONENT --- */
+/* --- Skeleton Loader --- */
 function ProfileSkeleton() {
   return (
     <div className="bg-gray-100 min-h-screen font-sans animate-pulse">
-      {/* Header Skeleton */}
       <div className="bg-[#8B0000] text-white rounded-b-3xl shadow-lg">
         <div className="flex items-center justify-between p-4">
           <div className="w-8 h-8 rounded-full bg-white/20"></div>
           <div className="w-20 h-6 rounded bg-white/20"></div>
           <div className="w-8 h-8 rounded-full bg-white/20"></div>
         </div>
-        {/* Avatar Skeleton */}
         <div className="flex flex-col items-center py-6">
           <div className="relative w-24 h-24 rounded-full bg-white/20 border-4 border-[#8B0000] shadow-inner"></div>
           <div className="h-6 w-32 bg-white/20 rounded mt-3"></div>
           <div className="h-4 w-24 bg-white/20 rounded mt-2"></div>
         </div>
       </div>
-      
-      {/* Info Section Skeleton (with the white background you wanted) */}
       <div className="bg-white rounded-t-3xl -mt-4 p-6">
         <div className="space-y-3">
           <SkeletonItem />
@@ -389,18 +412,11 @@ function ProfileSkeleton() {
           <SkeletonItem />
           <SkeletonItem />
         </div>
-        {/* Skeleton for Settings buttons */}
-        <div className="mt-8">
-          <div className="h-4 w-24 bg-gray-200 rounded mb-3"></div>
-          <div className="w-full h-14 bg-gray-100 rounded-2xl p-4"></div>
-          <div className="w-full h-14 bg-gray-100 rounded-2xl p-4 mt-3"></div>
-        </div>
       </div>
     </div>
   );
 }
 
-// Helper for the skeleton items
 function SkeletonItem() {
   return (
     <div className="bg-gray-100 rounded-2xl p-4">
@@ -410,8 +426,7 @@ function SkeletonItem() {
   );
 }
 
-
-/* --- REUSABLE COMPONENTS (Unchanged) --- */
+/* --- Reusable Components --- */
 function ProfileItem({ label, value }) {
   return (
     <div className="bg-gray-100 rounded-2xl p-4 mb-3">

@@ -1,48 +1,48 @@
-// components/layout/Header.jsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react"; // Ensure React is imported
+import React, { useEffect, useRef, useState, useMemo } from "react"; 
 import { supabase } from "@/supabaseClient";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation"; 
 import Swal from "sweetalert2";
 import {
-  Bell,
-  X,
-  Menu,
-  User,
-  LogOut,
-  LayoutDashboard,
-  ClipboardList,
-  CheckCircle2, // For modal footer
-  Trash2, // For modal footer
-  Inbox, // For empty state
+  Bell,         // Used in both
+  X,            // Used in both modals
+  User,         // Used for Profile Dropdown
+  LogOut,       // Used for Profile Dropdown
+  CheckCircle2, // Used in original modal footer
+  Trash2,      // Used in original modal footer
+  Inbox,       // Used in original modal empty state
+  // Menu, LayoutDashboard, ClipboardList (Removed - from original sidebar)
+  // Clock, AlertCircle (Removed - from minimalist item)
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// --- Time Helper ---
+// --- Time Helper (Copied from original) ---
 function formatTimeAgo(dateString) {
-  if (!dateString) return ''; // Handle null/undefined dates
+  if (!dateString) return '';
   const date = new Date(dateString);
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (seconds < 0) return 'just now'; // Handle future dates gracefully
+  if (seconds < 0) return 'just now';
 
   let interval = seconds / 31536000;
-  if (interval > 1) return Math.floor(interval) + "y ago";
+  if (interval > 1) return Math.floor(interval) + (interval >= 2 ? " years ago" : " year ago");
   interval = seconds / 2592000;
-  if (interval > 1) return Math.floor(interval) + "mo ago";
+  if (interval > 1) return Math.floor(interval) + (interval >= 2 ? " months ago" : " month ago");
   interval = seconds / 86400;
-  if (interval > 1) return Math.floor(interval) + "d ago";
+  if (interval > 1) return Math.floor(interval) + (interval >= 2 ? " days ago" : " day ago");
   interval = seconds / 3600;
-  if (interval > 1) return Math.floor(interval) + "h ago";
+  if (interval > 1) return Math.floor(interval) + (interval >= 2 ? " hours ago" : " hour ago");
   interval = seconds / 60;
-  if (interval > 1) return Math.floor(interval) + "m ago";
+  if (interval > 1) return Math.floor(interval) + (interval >= 2 ? " minutes ago" : " minute ago");
   if (seconds < 10) return "just now";
-  return Math.floor(seconds) + "s ago";
+  return Math.floor(seconds) + " seconds ago";
 }
 
-// --- Notification Item Component (Uses 'notif' from notifications table) ---
+// --- REMOVED: getNotifStyle helper (was for minimalist items) ---
+
+// --- Notification Item Component (FROM ORIGINAL CODE) ---
 function NotificationItem({ notif }) {
   const isRead = notif.read;
 
@@ -59,11 +59,11 @@ function NotificationItem({ notif }) {
       <div className="flex-1 min-w-0">
         {/* 1. Main Message */}
         <p
-          className={`text-sm ${
+          className={`text-sm break-words ${ 
             isRead ? "text-gray-700" : "text-gray-900 font-semibold"
           }`}
         >
-          {notif.message || "No message content."} {/* Added fallback */}
+          {notif.message || "No message content."} 
         </p>
 
         {/* 2. Status Badge */}
@@ -87,7 +87,7 @@ function NotificationItem({ notif }) {
             <p className="text-xs font-semibold text-gray-800">
               Official Response:
             </p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap break-words"> 
               {notif.official_response}
             </p>
           </div>
@@ -106,15 +106,15 @@ function NotificationItem({ notif }) {
   );
 }
 
-// --- Notification Modal Component (Includes working Footer) ---
+
+// --- Notification Modal Component (FROM ORIGINAL CODE, including positioning & blur) ---
 function NotificationModal({
   isOpen,
   onClose,
   notifications,
-  onMarkAllAsRead, // Prop for marking read
-  onClearAll, // Prop for clearing
+  onMarkAllAsRead, 
+  onClearAll, 
 }) {
-  // ... (modal animation unchanged) ...
    const modalVariants = {
     hidden: { opacity: 0, y: -10, scale: 0.98 },
     visible: { opacity: 1, y: 0, scale: 1 },
@@ -122,86 +122,107 @@ function NotificationModal({
   };
 
   const modalTransition = {
-    ease: [0.32, 0.72, 0, 1],
+    ease: [0.32, 0.72, 0, 1], 
     duration: 0.3,
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'; 
+      document.addEventListener('keydown', handleKeyDown);
+    } else {
+      document.body.style.overflow = ''; 
+    }
+    return () => {
+      document.body.style.overflow = ''; 
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop (with blur) */}
           <motion.div
+            key="notif-backdrop-original"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+            // ✅ Original blur class. Ensure it works in your Tailwind setup.
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50" 
           />
 
-          {/* Modal Panel */}
+          {/* Modal Panel (positioned top-right) */}
           <motion.div
+            key="notif-modal-original"
             variants={modalVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
             transition={modalTransition}
-            className="fixed bottom-auto top-16 right-4 left-auto w-96 max-w-[90vw] max-h-[70vh] bg-white rounded-2xl shadow-xl flex flex-col z-50"
+            onClick={(e) => e.stopPropagation()}
+            // ✅ Original positioning classes
+            className="fixed bottom-auto top-16 right-4 left-auto w-96 max-w-[90vw] max-h-[70vh] bg-white rounded-2xl shadow-xl flex flex-col z-50" 
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notification-modal-title-original"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+              <h2 id="notification-modal-title-original" className="text-lg font-semibold text-gray-900">
                 Notifications
               </h2>
               <button
                 onClick={onClose}
                 className="p-2 text-gray-500 rounded-full hover:bg-gray-100 transition"
+                aria-label="Close notifications"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Body */}
+            {/* Body (Uses the original NotificationItem) */}
             <div className="flex-1 overflow-y-auto">
               {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-gray-500">
-                  <Inbox className="w-12 h-12 mb-3" />
-                  <p className="font-medium">All caught up!</p>
+                <div className="flex flex-col items-center justify-center h-full text-center p-6 text-gray-500 min-h-[200px]">
+                  <Inbox className="w-12 h-12 mb-3 text-gray-400" aria-hidden="true" />
+                  <p className="font-medium text-gray-700">All caught up!</p>
                   <p className="text-sm">You have no new notifications.</p>
                 </div>
               ) : (
                 <div className="flex flex-col">
-                  {/* Map over notifications state */}
                   {notifications.map((notif) => (
-                    // Use 'id' from notifications table as key
                     <NotificationItem key={notif.id} notif={notif} />
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Footer with working buttons */}
+            {/* Footer */}
             {notifications.length > 0 && (
-              <div className="p-4 flex gap-3 bg-gray-50/75 border-t border-gray-200 rounded-b-2xl">
+              <div className="p-4 flex gap-3 bg-gray-50/75 border-t border-gray-200 rounded-b-2xl flex-shrink-0">
                 <button
-                  onClick={() => {
-                    onMarkAllAsRead(); // Call the passed function
-                  }}
-                  className="flex-1 text-sm flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium transition hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50"
-                  // Disable if no unread notifications exist
+                  onClick={onMarkAllAsRead} 
+                  className="flex-1 text-sm flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium transition hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed" // Original blue color
                   disabled={!notifications.some(n => !n.read)}
                 >
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-4 h-4" aria-hidden="true"/>
                   Mark all as read
                 </button>
                 <button
-                  onClick={() => {
-                    onClearAll(); // Call the passed function
-                  }}
-                  className="flex-1 text-sm flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium transition hover:bg-gray-300 active:bg-gray-400"
+                  onClick={onClearAll} 
+                  className="flex-1 text-sm flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium transition hover:bg-gray-300 active:bg-gray-400" // Original gray color
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" aria-hidden="true"/>
                   Clear all
                 </button>
               </div>
@@ -213,420 +234,417 @@ function NotificationModal({
   );
 }
 
+
 // --- Main Header Component ---
-export default function Header() {
-  const [open, setOpen] = useState(false);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [activePage, setActivePage] = useState("dashboard");
-  // ✅ State uses 'notifications'
-  const [notifications, setNotifications] = useState([]);
+export default function Header({ activePage }) {
+  // Profile state remains the same
+  const [isProfileOpen, setIsProfileOpen] = useState(false); 
+  
+  // Notification state (using original logic source)
+  const [isNotifOpen, setIsNotifOpen] = useState(false); 
+  const [notifications, setNotifications] = useState([]); // Use 'notifications' to match original logic
+  
   const [user, setUser] = useState(null);
-  const [userEmail, setUserEmail] = useState("");
-  const [userAvatar, setUserAvatar] = useState("/default-avatar.png");
+  
   const router = useRouter();
-  const pathname = usePathname();
-  // ✅ Renamed channel ref
-  const notificationChannelRef = useRef(null);
+  // Notification ref (using original logic source)
+  const notificationChannelRef = useRef(null); 
+  const profileBtnRef = useRef(null);
+  const profileDropdownRef = useRef(null);
 
-  useEffect(() => {
+ // --- Auth & Data Initialization (USING ORIGINAL LOGIC'S APPROACH) ---
+ useEffect(() => {
+    let isMounted = true; // Flag to prevent setting state on unmounted component
+
     const init = async () => {
-      // ... (Auth unchanged) ...
-       const { data, error } = await supabase.auth.getUser();
-      if (error || !data?.user) {
-        console.error("Auth fetch error:", error?.message);
-        // Consider redirecting if no user
-        // router.push('/login');
-        return;
+      console.log("(Original Init) Fetching user...");
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("(Original Init) Auth fetch error:", error?.message);
+        return; // Early exit on error
       }
-      const currentUser = data.user;
-      setUser(currentUser);
-      setUserEmail(currentUser.email || "Unknown User");
-
-      // ... (Avatar fetch unchanged) ...
-        const { data: profile } = await supabase
-        .from("profiles")
-        .select("avatar_url")
-        .eq("id", currentUser.id)
-        .single();
-      if (profile?.avatar_url) setUserAvatar(profile.avatar_url);
-
-
-      // ✅ Fetch initial notifications and subscribe
-      await fetchNotifications(currentUser.id);
-      subscribeToNotifications(currentUser.id);
+      
+      const currentUser = data?.user;
+      if (isMounted && currentUser) {
+        console.log("(Original Init) User found:", currentUser.id);
+        setUser(currentUser);
+        // Fetch initial notifications and subscribe (using original functions)
+        await fetchNotifications(currentUser.id);
+        subscribeToNotifications(currentUser.id);
+      } else if (isMounted) {
+          console.log("(Original Init) No user session found on init.");
+          // Clear state if no user on initial load (optional but good practice)
+          setNotifications([]);
+      }
     };
 
     init();
 
+    // Original code didn't explicitly listen to onAuthStateChange, 
+    // relying on page reload or component remount. We'll keep the init logic.
+    // If you NEED instant updates on login/logout without page refresh, 
+    // the onAuthStateChange listener is better, but let's stick to the original first.
+
     return () => {
-      // ... (Cleanup unchanged) ...
-       if (notificationChannelRef.current) {
-        supabase.removeChannel(notificationChannelRef.current);
+      isMounted = false; // Set flag on unmount
+      console.log("(Original Cleanup) Unsubscribing from notifications channel.");
+      if (notificationChannelRef.current) {
+        supabase.removeChannel(notificationChannelRef.current)
+            .catch(err => console.error("(Original Cleanup) Error removing channel:", err));
         notificationChannelRef.current = null;
       }
     };
-  }, []); // Added empty dependency array to run only once
+  }, []); // Run only once on mount
 
-  // ... (Active page logic unchanged) ...
-   useEffect(() => {
-    const currentPath = pathname || "";
-    let newActivePage = "dashboard"; // Default
-    if (currentPath.includes("/profile")) {
-      newActivePage = "profile";
-    } else if (currentPath.includes("/history")) {
-      newActivePage = "activity";
-    }
-    setActivePage(newActivePage);
-  }, [pathname]);
 
-  // ✅ Fetches from 'notifications' table
+  // --- Close dropdown on outside click (Kept current logic) ---
+  useEffect(() => {
+     const handleClickOutside = (event) => {
+        if (
+            isProfileOpen && 
+            profileBtnRef.current &&
+            !profileBtnRef.current.contains(event.target) &&
+            profileDropdownRef.current &&
+            !profileDropdownRef.current.contains(event.target)
+        ) {
+            setIsProfileOpen(false);
+        }
+     };
+     document.addEventListener("mousedown", handleClickOutside);
+     return () => { document.removeEventListener("mousedown", handleClickOutside); };
+  }, [isProfileOpen]); 
+
+  // --- Data Fetching & Realtime (USING ORIGINAL LOGIC) ---
   const fetchNotifications = async (uid) => {
-    // Make sure user ID is valid before fetching
-    if (!uid) return;
+  if (!uid) {
+    console.log("❌ No user ID provided for fetching notifications");
+    return;
+  }
+
+  try {
+    console.log("📥 Fetching notifications for user:", uid);
 
     const { data, error } = await supabase
       .from("notifications")
-      // Ensure all needed columns are selected
-      .select("id, message, status, official_response, created_at, updated_at, read, report_id")
+      .select("id, message, user_id, status, official_response, created_at, updated_at, read, report_id")
       .eq("user_id", uid)
-      .order("created_at", { ascending: false }); // Or updated_at if you prefer
+      .order("created_at", { ascending: false });
 
-    if (error) {
-        console.error("Fetch notifications error:", error.message);
-        setNotifications([]); // Set to empty array on error
-    }
-    else setNotifications(data || []);
-  };
+    if (error) throw error;
 
-  // ✅ Subscribes to 'notifications' table
-  const subscribeToNotifications = (uid) => {
-    if (notificationChannelRef.current || !uid) return; // Prevent multiple subs or subbing without user
+    console.log("✅ Notifications fetched:", data);
+    setNotifications(data || []);
+  } catch (error) {
+    console.error("⚠️ Error fetching notifications:", error);
+    setNotifications([]);
+  }
+};
 
-    notificationChannelRef.current = supabase
-      .channel(`realtime-notifications-${uid}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Listen for INSERT, UPDATE, DELETE
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${uid}`, // Filter changes for the current user
-        },
-        (payload) => {
-          const newNotif = payload.new;
-          const oldNotif = payload.old;
-          let showUpdateAlert = false;
-          let alertTitle = "";
-          let alertText = "";
+  
+   const subscribeToNotifications = (uid) => {
+     // Prevent multiple subs or subbing without user (from original)
+     if (notificationChannelRef.current || !uid) { 
+        console.log(`(Original Sub) ${notificationChannelRef.current ? 'Already subscribed' : 'No UID'}, skipping subscribe.`);
+        return; 
+     }
 
-          console.log("Notification change received:", payload); // Log for debugging
+     console.log("(Original Sub) Attempting subscribe for:", uid);
+     const channel = supabase
+       .channel(`realtime-notifications-${uid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "*", 
+           schema: "public",
+           table: "notifications",
+           filter: `user_id=eq.${uid}`, 
+         },
+         (payload) => {
+           console.log("(Original Sub) Change received:", payload); 
+           // Re-fetch data on change
+           fetchNotifications(uid); 
 
-          switch (payload.eventType) {
-            case "INSERT":
-              setNotifications((prev) => {
-                // Prevent adding if already exists (belt-and-suspenders for upsert)
-                const exists = prev.some((n) => n.id === newNotif.id);
-                if (exists) return prev;
+           // --- Original Toast Logic ---
+           const newNotif = payload.new;
+           const oldNotif = payload.old;
+           let showUpdateAlert = false;
+           let alertTitle = "";
+           let alertText = "";
+
+           if (payload.eventType === 'INSERT') {
+              // Check if notification might already exist due to potential race conditions
+              const exists = notifications.some(n => n.id === newNotif.id);
+              if (!exists) {
                 showUpdateAlert = true;
                 alertTitle = "New Notification";
                 alertText = newNotif.message;
-                return [newNotif, ...prev]; // Add to start of list
-              });
-              break;
-
-            case "UPDATE":
-              setNotifications((prev) =>
-                // Update the specific notification in the list
-                prev.map((n) => (n.id === newNotif.id ? { ...n, ...newNotif } : n))
-              );
-               showUpdateAlert = true;
-               alertTitle = "Notification Updated";
-               alertText = newNotif.official_response && newNotif.official_response !== oldNotif?.official_response
-                ? `Response added/updated for your report.` // More generic if only response changed
-                : `Report status changed to ${newNotif.status}.`;
-               // Avoid alert if only 'read' status changed
-               if (oldNotif && newNotif.read !== oldNotif.read && Object.keys(payload.old).length === 1) {
-                   showUpdateAlert = false;
-               }
-              break;
-
-            case "DELETE":
-              setNotifications((prev) =>
-                prev.filter((n) => n.id !== oldNotif.id)
-              );
-              // Optionally show a different alert for deletion
-              // showUpdateAlert = true;
-              // alertTitle = "Notification Removed";
-              // alertText = "A notification was removed.";
-              break;
-            default:
-              console.log("Unhandled event type:", payload.eventType);
-              break;
-          }
-          // Show alert outside the state setter if needed
-           if (showUpdateAlert) {
-              Swal.fire({
-                icon: payload.eventType === 'INSERT' ? "info" : "success",
-                title: alertTitle,
-                text: alertText,
-                timer: 3000, // Slightly longer timer
-                showConfirmButton: false,
-                toast: true, // Use toast for less interruption
-                position: 'top-end'
-              });
+              }
+           } else if (payload.eventType === 'UPDATE') {
+              // Avoid alert if only 'read' status changed
+              const readChangedOnly = newNotif.read !== oldNotif?.read && Object.keys(payload.old || {}).length === 1 && 'read' in (payload.old || {});
+              if (!readChangedOnly) {
+                 showUpdateAlert = true;
+                 alertTitle = "Notification Updated";
+                 alertText = newNotif.official_response && newNotif.official_response !== oldNotif?.official_response
+                   ? `Response added/updated.`
+                   : `Status changed to ${newNotif.status}.`;
+              }
            }
-        }
-      )
-     .subscribe((status, err) => {
-if (status === 'SUBSCRIBED') {
-console.log(`Subscribed to notifications for user ${uid}`);
-} else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
- // These are actual errors
- console.error(`Subscription failed: ${status}`, err);
-// Optionally try to resubscribe after a delay
-} else if (status === 'CLOSED') {
-// This is an intentional close, usually from the useEffect cleanup
-console.log(`Subscription closed for user ${uid}`);
-}
 
-// You can keep this or merge it into the 'CHANNEL_ERROR' block
-if (err) {
-console.error("Subscription specific error:", err);
-}
-});
-  }
-  // ✅ Mark all as read (targets 'notifications' table)
-  const markAllAsRead = async () => {
-    if (!user) return; // Need user to perform action
+           if (showUpdateAlert) {
+             Swal.fire({
+               icon: payload.eventType === 'INSERT' ? "info" : "success",
+               title: alertTitle,
+               text: alertText,
+               timer: 3000, 
+               showConfirmButton: false,
+               toast: true, 
+               position: 'top-end',
+               timerProgressBar: true
+             });
+           }
+         }
+       )
+       .subscribe((status, err) => {
+         if (status === 'SUBSCRIBED') {
+           console.log(`(Original Sub) Successfully subscribed for user ${uid}`);
+         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+           console.error(`(Original Sub) Subscription failed: ${status}`, err);
+           // Clear ref on failure to allow retry?
+           notificationChannelRef.current = null; 
+         } else if (status === 'CLOSED') {
+           console.log(`(Original Sub) Subscription closed for user ${uid}`);
+           // Clear ref when closed?
+           notificationChannelRef.current = null;
+         }
+         if (err) {
+           console.error("(Original Sub) Subscription specific error:", err);
+         }
+       });
+     notificationChannelRef.current = channel; // Assign channel to ref
+   };
+  
+  // --- Notification Actions (USING ORIGINAL LOGIC) ---
+   const markAllAsRead = async () => {
+     if (!user) return; 
+     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
+     if (unreadIds.length === 0) return;
 
-    // Find IDs of notifications that are currently unread
-    const unreadIds = notifications
-      .filter((n) => !n.read)
-      .map((n) => n.id);
+     console.log("(Original Action) Marking as read:", unreadIds);
+     try {
+        const { error } = await supabase
+            .from("notifications")
+            .update({ read: true, updated_at: new Date().toISOString() }) 
+            .eq('user_id', user.id) 
+            .in("id", unreadIds); 
 
-    if (unreadIds.length === 0) {
-      // Don't show alert if nothing to mark
-      return;
-    }
+        if (error) throw error;
+        // Original code had optimistic update here:
+        setNotifications((prev) =>
+          prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n))
+        );
+        console.log("(Original Action) Marked as read locally/DB.");
 
-    const { error } = await supabase
-      .from("notifications")
-      .update({ read: true, updated_at: new Date().toISOString() }) // Also update timestamp
-      .eq('user_id', user.id) // Ensure we only update for the current user
-      .in("id", unreadIds); // Target only the unread ones
+     } catch(error) {
+        console.error("(Original Action) Mark read error:", error.message);
+        Swal.fire("Error", "Could not mark notifications as read.", "error");
+     }
+   };
 
+   const clearAllNotifications = async () => {
+     if (!user || !notifications.length) return;
+
+     const confirm = await Swal.fire({
+       title: "Clear all notifications?",
+       text: "This will permanently delete all your notifications.",
+       icon: "warning",
+       showCancelButton: true,
+       confirmButtonColor: "#d33",
+       cancelButtonColor: "#3085d6",
+       confirmButtonText: "Yes, delete all",
+       cancelButtonText: "Cancel",
+       customClass: { popup: 'rounded-lg' }
+     });
+
+     if (!confirm.isConfirmed) return;
+
+     console.log("(Original Action) Clearing all notifications...");
+     try {
+        const { error } = await supabase
+            .from("notifications")
+            .delete()
+            .eq("user_id", user.id); 
+            
+        if (error) throw error;
+
+        // Original code had optimistic update and success Swal here:
+        setNotifications([]); 
+        setIsNotifOpen(false); // Close modal
+        console.log("(Original Action) Cleared all locally/DB.");
+        Swal.fire("Cleared!", "All notifications deleted.", "success");
+
+     } catch(error) {
+        console.error("(Original Action) Delete error:", error.message);
+        Swal.fire("Error", "Failed to delete notifications.", "error");
+     }
+   };
+
+
+   // --- openNotifModal (USING ORIGINAL LOGIC) ---
+   const openNotifModal = () => {
+     console.log("(Original Action) openNotifModal called.");
+     // Check 'notifications' state length *before* opening
+     if (!user) { // Added check for user login
+        console.log("(Original Action) No user logged in.");
+        Swal.fire("Login Required", "Please log in to view notifications.", "warning");
+        return;
+     }
+     if (notifications.length === 0) {
+        console.log("(Original Action) No notifications in state, showing Swal.");
+        Swal.fire({
+            title: "No Notifications",
+            text: "You're all caught up!",
+            icon: "info",
+            timer: 2000,
+            showConfirmButton: false,
+        });
+        // Optionally fetch here in case state is stale
+        // fetchNotifications(user.id); 
+        return; // Don't open if empty
+     }
+     console.log("(Original Action) Opening notification modal.");
+     // Optional: Fetch latest just before opening
+     // fetchNotifications(user.id); 
+     setIsNotifOpen(true); 
+   };
+  
+  // Memoized unread count (using original logic source)
+  const unreadCount = useMemo(() => {
+      // Ensure notifications is always an array
+      return (notifications || []).filter((n) => !n.read).length;
+  }, [notifications]);
+  
+  // --- Logout Handler (Kept current improved logic) ---
+  const handleLogout = async () => {
+    console.log("Attempting to sign out...");
+    setIsProfileOpen(false); 
+    const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error("Mark read error:", error.message);
-      Swal.fire("Error", "Could not mark notifications as read.", "error");
+       console.error("Error signing out:", error.message);
+       Swal.fire("Error", "Could not sign out. Please try again.", "error");
     } else {
-      // Update local state immediately for responsiveness
-      // This is handled automatically by the subscription now,
-      // but doing it locally feels faster. Ensure consistency.
-       setNotifications((prev) =>
-         prev.map((n) => (unreadIds.includes(n.id) ? { ...n, read: true } : n))
-       );
-       console.log("Marked as read:", unreadIds);
+      console.log("Sign out successful.");
+      // State cleanup should happen via onAuthStateChange listener
+      router.push("/login"); // Redirect
     }
   };
 
-  // ✅ Clear all (targets 'notifications' table)
-  const clearAllNotifications = async () => {
-     if (!user || !notifications.length) {
-       // Don't show confirmation if nothing to clear or no user
-      return;
-    }
-
-    const confirm = await Swal.fire({
-      title: "Clear all notifications?",
-      text: "This will permanently delete all your notifications.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
-      confirmButtonText: "Yes, delete all",
-      cancelButtonText: "Cancel",
-    });
-
-    if (!confirm.isConfirmed) return;
-
-    const { error } = await supabase
-      .from("notifications")
-      .delete()
-      .eq("user_id", user.id); // Make sure to only delete for the current user
-
-    if (error) {
-      console.error("Delete error:", error.message);
-      Swal.fire("Error", "Failed to delete notifications.", "error");
-    } else {
-      // State update might be handled by subscription, but clear locally too.
-      setNotifications([]);
-      setIsNotifOpen(false); // Close modal
-      Swal.fire("Cleared!", "All notifications deleted.", "success");
+  // --- Dynamic Page Title Helper (Kept current logic) ---
+  const getPageTitle = (page) => {
+    switch (page) {
+      case 'schedule': return 'Schedule';
+      case 'report': return 'Report an Issue';
+      case 'education': return 'Education';
+      case 'profile': return 'Profile';
+      default:
+        console.warn("getPageTitle called with unknown page key:", page);
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        if (path.includes('/report')) return 'Report an Issue';
+        if (path.includes('/education')) return 'Education';
+        if (path.includes('/profile')) return 'Profile';
+        return 'Schedule'; 
     }
   };
-
-
-  const openNotifModal = () => {
-    // Check 'notifications' state here
-    if (!notifications.length) {
-      Swal.fire({
-        title: "No Notifications",
-        text: "You're all caught up!",
-        icon: "info",
-        timer: 2000,
-        showConfirmButton: false,
-      });
-      return;
-    }
-    setIsNotifOpen(true);
-  };
-
-  // ✅ Calculates unread count from 'notifications' state
-  const unreadCount = notifications.filter((n) => !n.read).length;
-
-  // ... (handleLogout, shortenEmail, menuItems unchanged) ...
-   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.removeItem("activePage");
-    setOpen(false);
-    router.push("/login");
-  };
-
-  const shortenEmail = (email) =>
-    email.length > 20 ? email.slice(0, 17) + "..." : email;
-
-  const menuItems = [
-    {
-      key: "dashboard",
-      label: "Dashboard",
-      icon: <LayoutDashboard className="w-5 h-5" />,
-      href: "/residents",
-    },
-    {
-      key: "profile",
-      label: "Profile",
-      icon: <User className="w-5 h-5" />,
-      href: "/profile",
-    },
-    {
-      key: "activity",
-      label: "Activity Log",
-      icon: <ClipboardList className="w-5 h-5" />,
-      href: "/history",
-    },
-  ];
-
 
   return (
     <>
-      {/* 1. HEADER (Top Bar) - Uses unreadCount */}
-      <nav className="bg-[#8B0000] text-white p-4 shadow-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-semibold">Residents Dashboard</h1>
-          <div className="flex items-center gap-3 relative">
+      {/* Header Bar (Dark Red theme) */}
+      <nav className="bg-[#8B0000] text-white px-4 py-4 sticky top-0 z-40 shadow-md"> 
+        <div className="flex justify-between items-center">
+          <h1 id="page-title" className="text-xl font-bold text-white">
+            {getPageTitle(activePage)}
+          </h1>
+          
+          <div className="flex items-center space-x-3 sm:space-x-4"> 
+            
+            {/* Notification Button (USING ORIGINAL STYLING adapted for dark bg) */}
             <button
-              onClick={openNotifModal}
-              className="relative p-2 rounded-full hover:bg-[#a30000] transition"
+              onClick={openNotifModal} // Uses original openNotifModal
+              className="relative p-2 text-white rounded-full " 
+              aria-label="Open notifications"
             >
               <Bell className="w-6 h-6" />
-              {/* Uses the unreadCount state */}
+              {/* Original badge styling */}
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-600 text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold ring-2 ring-[#8B0000]">
+                <span 
+                  className="absolute -top-1 -right-1 bg-red-600 text-xs rounded-full h-5 w-5 flex items-center justify-center font-semibold ring-2 ring-[#8B0000]" // Original badge classes
+                  aria-label={`${unreadCount} unread notifications`}
+                 >
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </button>
+            
+            {/* Profile Button (Current logic/styling) */}
             <button
-              onClick={() => setOpen(true)}
-              className="p-2 rounded-full hover:bg-[#a30000] transition hidden md:block"
+              ref={profileBtnRef}
+              id="profile-btn"
+              onClick={(e) => { e.stopPropagation(); setIsProfileOpen(prev => !prev); }}
+              className="relative p-1 text-white rounded-full " 
+              aria-label="Open profile menu"
+              aria-haspopup="true"
+              aria-expanded={isProfileOpen} 
             >
-              <Menu className="w-6 h-6" />
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
             </button>
           </div>
         </div>
       </nav>
 
-      {/* 2. SIDEBAR (Desktop - Unchanged) */}
-       <div
-        className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-50 transition-opacity duration-300 ${
-          open ? "opacity-100 visible" : "opacity-0 invisible"
-        }`}
-        onClick={() => setOpen(false)}
-      >
-        <div
-          className={`fixed top-0 right-0 h-full w-72 bg-gradient-to-b from-white to-gray-100 shadow-2xl flex flex-col transform transition-transform duration-300 ${
-            open ? "translate-x-0" : "translate-x-full"
-          } rounded-l-2xl`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b bg-[#8B0000] text-white rounded-tl-2xl">
-            <h2 className="text-lg font-semibold">Menu</h2>
-            <button
-              onClick={() => setOpen(false)}
-              className="p-1 rounded-full hover:bg-[#a30000] transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          {/* Profile */}
-          <div className="flex flex-col items-center py-6 border-b">
-            <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-[#8B0000] shadow-md mb-3">
-              <img
-                src={userAvatar}
-                alt="Avatar"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <p className="text-base font-semibold text-gray-800">
-              {shortenEmail(userEmail)}
-            </p>
-          </div>
-          {/* Menu Items */}
-          <div className="flex-1 flex flex-col justify-between">
-            <div className="py-4 space-y-1 px-3">
-              {menuItems.map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => {
-                    router.push(item.href);
-                    setActivePage(item.key);
-                    localStorage.setItem("activePage", item.key);
-                    setOpen(false);
-                  }}
-                  className={`flex items-center gap-3 w-full text-left px-5 py-3 font-medium rounded-lg transition-all ${
-                    activePage === item.key
-                      ? "bg-[#8B0000] text-white shadow-md"
-                      : "text-gray-800 hover:bg-[#8B0000]/10"
-                  }`}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-            {/* Logout */}
-            <div className="border-t p-4">
+      {/* Profile Dropdown (Current logic/styling) */}
+      <AnimatePresence>
+        {isProfileOpen && (
+          <motion.div
+            key="profile-dropdown" 
+            ref={profileDropdownRef}
+            initial={{ opacity: 0, scale: 0.95, y: -10 }} 
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+            transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }} 
+            className="absolute right-4 top-16 mt-1 w-48 origin-top-right bg-white rounded-md shadow-lg z-50 ring-1 ring-black ring-opacity-5 focus:outline-none" 
+            role="menu" aria-orientation="vertical" aria-labelledby="profile-btn"
+          >
+            <div className="py-1" role="none"> 
               <button
-                onClick={handleLogout}
-                className="flex items-center justify-center gap-2 w-full bg-gray-800 text-white py-2.5 rounded-lg font-medium hover:bg-gray-900 transition"
+                onClick={() => { router.push('/profile'); setIsProfileOpen(false); }}
+                className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors duration-150" 
+                role="menuitem"
               >
-                <LogOut className="w-5 h-5" />
+                <User className="w-4 h-4 mr-2 text-gray-400" aria-hidden="true" /> 
+                Profile
+              </button>
+              <button
+                onClick={handleLogout} 
+                className="flex items-center w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors duration-150" 
+                role="menuitem"
+              >
+                <LogOut className="w-4 h-4 mr-2" aria-hidden="true" /> 
                 Logout
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-
-
-      {/* 3. NOTIFICATION MODAL (Using 'notifications' state and working actions) */}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Notification Modal (USING ORIGINAL COMPONENT & LOGIC) */}
       <NotificationModal
         isOpen={isNotifOpen}
         onClose={() => setIsNotifOpen(false)}
-        notifications={notifications}
-        onMarkAllAsRead={markAllAsRead} // Pass the working function
-        onClearAll={clearAllNotifications} // Pass the working function
+        notifications={notifications} // Passed 'notifications' state
+        onMarkAllAsRead={markAllAsRead} // Passed original function
+        onClearAll={clearAllNotifications} // Passed original function
       />
     </>
   );

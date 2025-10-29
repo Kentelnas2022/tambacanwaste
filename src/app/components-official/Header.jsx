@@ -2,11 +2,19 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Menu, LogOut, Settings } from "lucide-react";
+import { Menu, LogOut, UserPlus } from "lucide-react";
+import Swal from "sweetalert2";
 
 export default function Header() {
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+    name: "",
+    role: "",
+  });
   const menuRef = useRef(null);
   const router = useRouter();
 
@@ -27,36 +35,29 @@ export default function Header() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🧠 Close dropdown if clicking outside + close on Escape
+  // 🧠 Close dropdown if clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       const node = menuRef.current;
-      // only proceed if we have a DOM node and event target is a DOM Node
       if (!node) return;
-      if (event && event.target && event.target instanceof Node) {
-        if (!node.contains(event.target)) {
-          setMenuOpen(false);
-        }
+      if (event.target instanceof Node && !node.contains(event.target)) {
+        setMenuOpen(false);
       }
     };
 
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setShowModal(false);
+      }
     };
 
-    // Guard for SSR safety
-    if (typeof window !== "undefined" && typeof document !== "undefined") {
-      document.addEventListener("mousedown", handleClickOutside);
-      document.addEventListener("touchstart", handleClickOutside);
-      document.addEventListener("keydown", handleKeyDown);
-    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      if (typeof window !== "undefined" && typeof document !== "undefined") {
-        document.removeEventListener("mousedown", handleClickOutside);
-        document.removeEventListener("touchstart", handleClickOutside);
-        document.removeEventListener("keydown", handleKeyDown);
-      }
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
@@ -64,21 +65,65 @@ export default function Header() {
     setMenuOpen(false);
     try {
       await supabase.auth.signOut();
+      router.push("/login");
     } catch (err) {
       console.error("Sign out error", err);
-    } finally {
-      router.push("/login");
     }
   };
 
-  const handleAdminClick = () => {
-    setMenuOpen(false);
-    // router.push('/admin') // uncomment if you have an admin route
+  // ✅ FIXED: Create Account
+  const handleCreateAccount = async (e) => {
+    e.preventDefault();
+    if (!form.role) {
+      Swal.fire({ icon: "error", title: "Please select a role." });
+      return;
+    }
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      });
+      if (authError) throw authError;
+
+      const uid = authData?.user?.id;
+      if (!uid) throw new Error("User ID missing after signup.");
+
+      await new Promise((res) => setTimeout(res, 500));
+
+      const { error: insertError } = await supabase.from("users").insert([
+        {
+          uid,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (insertError) throw insertError;
+
+      Swal.fire({
+        icon: "success",
+        title: `${form.role.charAt(0).toUpperCase() + form.role.slice(1)} account created successfully!`,
+        showConfirmButton: false,
+        timer: 1800,
+      });
+
+      setShowModal(false);
+      setForm({ email: "", password: "", name: "", role: "" });
+    } catch (error) {
+      console.error("Error creating account:", error.message);
+      Swal.fire({
+        icon: "error",
+        title: "Failed to create account",
+        text: error.message,
+      });
+    }
   };
 
   return (
     <header className="relative overflow-visible shadow-lg w-full z-[100]">
-      {/* Background layers */}
       <div className="absolute inset-0 bg-red-800" aria-hidden />
       <div
         className="absolute inset-0 opacity-10"
@@ -90,7 +135,6 @@ export default function Header() {
       />
       <div className="absolute inset-0 bg-black opacity-10" aria-hidden />
 
-      {/* Header content */}
       <div className="relative z-20 container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
         {/* Left: Logo + Title */}
         <div className="flex items-center gap-3">
@@ -122,60 +166,47 @@ export default function Header() {
           </div>
 
           <button
-            onClick={handleAdminClick}
-            className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
-            aria-label="Open Admin Panel"
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-800 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
           >
-            <Settings className="w-4 h-4" /> Admin Panel
+            <UserPlus className="w-4 h-4" /> Add User
           </button>
 
           <button
             onClick={handleLogout}
             className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
-            aria-label="Logout"
           >
             <LogOut className="w-4 h-4" /> Logout
           </button>
         </div>
 
-        {/* Mobile: burger menu */}
+        {/* Mobile Menu */}
         <div className="sm:hidden relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
-            aria-expanded={menuOpen}
-            aria-haspopup="true"
-            aria-label="Open menu"
             className="p-2 rounded-md bg-white/20 text-white hover:bg-white/30 transition"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Dropdown */}
           {menuOpen && (
             <div
-              role="menu"
-              aria-label="Header menu"
               className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[200] animate-fade-in"
               style={{ top: "100%" }}
             >
-              <div className="px-4 py-2 text-gray-700 font-semibold border-b text-center">🕐 {time}</div>
+              <div className="px-4 py-2 text-gray-700 font-semibold border-b text-center">
+                🕐 {time}
+              </div>
 
               <button
-                role="menuitem"
-                onClick={() => {
-                  handleAdminClick();
-                  setMenuOpen(false);
-                }}
+                onClick={() => setShowModal(true)}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
               >
-                <Settings className="w-4 h-4 text-gray-500" /> Admin Panel
+                <UserPlus className="w-4 h-4 text-gray-500" /> Add User
               </button>
 
               <button
-                role="menuitem"
-                onClick={() => {
-                  handleLogout();
-                }}
+                onClick={handleLogout}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
               >
                 <LogOut className="w-4 h-4 text-gray-500" /> Logout
@@ -185,7 +216,69 @@ export default function Header() {
         </div>
       </div>
 
-      {/* small inline CSS for the fade animation; you can move this to global CSS */}
+      {/* ✨ Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[300] p-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Create User Account</h2>
+
+            <form onSubmit={handleCreateAccount} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="border p-2 rounded-lg"
+                required
+              />
+              <input
+                type="email"
+                placeholder="Email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="border p-2 rounded-lg"
+                required
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                className="border p-2 rounded-lg"
+                required
+              />
+
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                className="border p-2 rounded-lg"
+                required
+              >
+                <option value="">Select Role</option>
+                <option value="official">Official</option>
+                <option value="collector">Collector</option>
+              </select>
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(-6px); }

@@ -505,68 +505,133 @@ export default function Education() {
         </AnimatePresence>
       </div>
 
-      {/* --- Add Content Modal (White/Gray/Red Palette) --- */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+     {/* --- Add Content Modal (Refined Minimal Design) --- */}
+<AnimatePresence>
+  {isModalOpen && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={() => setIsModalOpen(false)}
+    >
+      <motion.div
+        initial={{ y: -25, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: -25, opacity: 0 }}
+        transition={{ duration: 0.25, ease: 'easeInOut' }}
+        className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center px-5 py-3 border-b border-gray-200">
+          <h2 className="text-base font-semibold text-gray-900">
+            📚 Add New Educational Content
+          </h2>
+          <button
             onClick={() => setIsModalOpen(false)}
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
           >
-            <motion.div
-              initial={{ y: -30, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -30, opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="w-full max-w-lg p-6 space-y-5 bg-white rounded-2xl shadow-xl" // White modal bg
-              onClick={(e) => e.stopPropagation()}
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleAddContent} className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Content Title *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Enter title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#b33b3b] focus:border-transparent transition"
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Category *
+            </label>
+            <select
+              required
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#b33b3b] focus:border-transparent transition"
             >
-              <div className="flex justify-between items-center">
-                 {/* Title: Black text */}
-                 <h2 className="text-lg font-semibold text-gray-900">
-                    📚 Add New Educational Content
-                 </h2>
-                 {/* Close button: Gray */}
-                 <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"> <X size={20}/> </button>
-              </div>
+              <option value="" disabled>Select Category</option>
+              <option value="Waste Segregation">Waste Segregation</option>
+              <option value="Recycling">Recycling</option>
+              <option value="Composting">Composting</option>
+              <option value="Waste Reduction">Waste Reduction</option>
+              <option value="Proper Disposal">Proper Disposal</option>
+              <option value="Hazardous Waste">Hazardous Waste</option>
+              <option value="Health and Safety">Health and Safety</option>
+              <option value="Sustainable Living">Sustainable Living</option>
+              <option value="General">General/Other</option>
+            </select>
+          </div>
 
-              <form onSubmit={handleAddContent} className="space-y-4">
-                 {/* Inputs: Gray bg, Red focus ring */}
-                <input type="text" placeholder="Content Title *" required className="w-full px-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
-                <select required className={`w-full px-4 py-3 bg-gray-100 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base ${formData.category ? 'text-gray-800' : 'text-gray-400'}`} value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })}>
-                   <option value="" disabled>Select Category *</option>
-                   <option value="Waste Segregation">Waste Segregation</option>
-                   <option value="Recycling">Recycling</option>
-                   <option value="Composting">Composting</option>
-                   <option value="Waste Reduction">Waste Reduction</option>
-                   <option value="Proper Disposal">Proper Disposal</option>
-                   <option value="Hazardous Waste">Hazardous Waste</option>
-                   <option value="Health and Safety">Health and Safety</option>
-                   <option value="Sustainable Living">Sustainable Living</option>
-                   <option value="General">General/Other</option>
-                </select>
-                <textarea placeholder="Description (Optional)" rows={4} className="w-full px-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
-                <FileUploadInput onChange={handleFileUpload} media={formData.media} />
-                 {/* ✅ Checkbox: Red accent, Gray text */}
-                 <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
-                     <input type="checkbox" className="w-4 h-4 text-[#b33b3b] rounded border-gray-300 focus:ring-[#d94f4f]/50" checked={formData.publishNow} onChange={(e) => setFormData({ ...formData, publishNow: e.target.checked })} />
-                     Publish immediately
-                  </label>
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              placeholder="Write a short description..."
+              rows={3}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-md text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#b33b3b] focus:border-transparent transition resize-none"
+            />
+          </div>
 
-                {/* Modal Actions */}
-                <div className="flex justify-end gap-3 pt-2">
-                   {/* ✅ Cancel: White/Gray */}
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-sm font-medium text-gray-700 transition bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"> Cancel </button>
-                   {/* ✅ Save: Red */}
-                  <button type="submit" className="px-5 py-2.5 text-sm font-semibold text-white bg-[#b33b3b] rounded-lg shadow-sm transition hover:bg-[#c14a4a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#b33b3b]"> Save Content </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {/* File Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Upload File (Optional)
+            </label>
+            <FileUploadInput onChange={handleFileUpload} media={formData.media} />
+          </div>
+
+          {/* Checkbox */}
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              className="w-4 h-4 text-[#b33b3b] border-gray-300 rounded focus:ring-[#b33b3b]/50"
+              checked={formData.publishNow}
+              onChange={(e) => setFormData({ ...formData, publishNow: e.target.checked })}
+            />
+            Publish immediately
+          </label>
+
+          {/* Footer Buttons */}
+          <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 mt-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm font-semibold text-white bg-[#8b1c1c] rounded-md hover:bg-[#a22a2a] transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#8b1c1c]"
+            >
+              Save Content
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
+
     </div>
   );
 }

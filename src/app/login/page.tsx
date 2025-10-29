@@ -40,7 +40,6 @@ const onboardingScreens = [
   },
 ];
 
-
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -67,7 +66,6 @@ function LoginModal({
   handleLogin,
   error,
 }: LoginModalProps) {
-
   const modalVariants = {
     hidden: { opacity: 0, scale: 0.95, y: 20 },
     visible: { opacity: 1, scale: 1, y: 0 },
@@ -174,6 +172,48 @@ function LoginModal({
   );
 }
 
+// --- Image data for the new carousel ---
+const carouselImages = [
+  "/img/CleanUp1.png",
+  "/img/CleanUp2.png",
+  "/img/CleanUp3.png",
+  "/img/CleanUp4.png",
+];
+
+// --- AutoCarousel Component (Modified for Full-Screen Background) ---
+function AutoCarousel() {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Move to the next image, looping back to 0
+      setIndex((prevIndex) => (prevIndex + 1) % carouselImages.length);
+    }, 4000); // 4 seconds as requested
+
+    return () => clearInterval(interval); // Cleanup on unmount
+  }, []);
+
+  return (
+    // This is the main container, positioned absolutely to fill its parent
+    <div className="absolute inset-0">
+      <AnimatePresence>
+        <motion.img
+          key={index} // This tells AnimatePresence to animate when the index changes
+          src={carouselImages[index]}
+          alt={`Cleanup slide ${index + 1}`}
+          initial={{ opacity: 0 }} // Fade in
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }} // Fade out
+          transition={{ duration: 1.0, ease: "easeInOut" }} // Slower transition for bg
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      </AnimatePresence>
+      {/* Dark overlay for text readability */}
+      <div className="absolute inset-0 bg-black/60" />
+    </div>
+  );
+}
+
 // --- Main Login Page Component ---
 export default function Login() {
   const router = useRouter();
@@ -197,6 +237,7 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // --- Typing Animation (Keep as is) ---
   const messages = ["Welcome!", "Hello There!", "Log In to Start!"];
@@ -205,6 +246,8 @@ export default function Login() {
   const [charIndex, setCharIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
 
+
+  
   useEffect(() => {
     if (!isMobile || !started) return;
     const speed = isDeleting ? 50 : 120;
@@ -228,189 +271,131 @@ export default function Login() {
     return () => clearTimeout(timeout);
   }, [charIndex, isDeleting, messageIndex, started, isMobile]);
 
+ const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError("");
+  setLoading(true);
 
-  // --- Login Handler (Keep as is) ---
-const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    const { error, data } = await supabase.auth.signInWithPassword({
+  try {
+    // Step 1: Sign in the user
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError("Invalid email or password.");
+      setLoading(false);
       return;
     }
 
-    const user = data.user;
-    if (!user) return;
+    const user = signInData.user;
 
-    setIsLoginModalOpen(false);
+    // Step 2: Check if this email exists in the users table
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("email, role")
+      .eq("email", user.email)
+      .single();
 
-    const adminEmail = "tristandominicparajes.202200583@gmail.com";
-    const collectorEmail = "parajestristan4@gmail.com";
-
-    if (user.email === adminEmail) {
-      router.push("/");
-    } else if (user.email === collectorEmail) {
-      router.push("/collector");
-    } else {
-      router.push("/residents");
+    if (userError || !userData) {
+      setError("Account not recognized. Please contact your administrator.");
+      await supabase.auth.signOut();
+      setLoading(false);
+      return;
     }
-  };
+
+    // Step 3: Redirect based on role
+    if (userData.role === "official" || userData.role === "admin") {
+      router.push("/"); // official/admin dashboard
+    } else if (userData.role === "collector") {
+      router.push("/collector");
+    } else if (userData.role === "resident" || userData.role === "residents") {
+      router.push("/residents");
+    } else {
+      console.warn("⚠️ Unknown role:", userData.role);
+      router.push("/");
+    }
+  } catch (err: any) {
+    console.error("Login error:", err.message);
+    setError(err.message || "An unexpected error occurred. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // --- 🧭 PROFESSIONAL DESKTOP VIEW --- 🧭
   if (!isMobile && !started) {
     return (
-      // ✅ Using bg-gray-50 for a subtle background
       <div className="min-h-screen flex flex-col bg-gray-50">
-        {/* 🌐 Navbar (Cleaned up shadow) */}
-        <header className="w-full bg-white shadow-sm py-4 px-12 flex justify-between items-center fixed top-0 left-0 z-10">
+        {/* Navbar */}
+        <header className="w-full bg-white shadow-sm py-4 px-12 flex justify-between items-center fixed top-0 left-0 z-50">
           <div className="flex items-center space-x-3">
-            {/* Optional: Add Logo here */}
-            {/* <img src="/logo.svg" alt="WasteSmart Logo" className="h-8 w-auto" /> */}
-            <h1 className="text-xl font-semibold text-[#b33b3b]"> {/* Changed to semibold */}
+            <h1 className="text-xl font-semibold text-[#b33b3b]">
               Waste Collection Portal
             </h1>
           </div>
           <button
             onClick={() => setIsLoginModalOpen(true)}
-            className="bg-[#b33b3b] text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-[#c14a4a] transition duration-200" // Slightly darker hover
+            className="bg-[#b33b3b] text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-[#c14a4a] transition duration-200"
           >
             Login
           </button>
         </header>
 
-        {/* 📰 Hero Section (Increased spacing, lighter text) */}
-        <section className="flex flex-col md:flex-row items-center justify-between gap-12 px-12 pt-40 md:pt-48 pb-16"> {/* Added gap, added pb */}
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="max-w-xl md:w-1/2"
-          >
-            {/* ✅ Lighter headline weight */}
-            <h2 className="text-5xl font-semibold text-[#b33b3b] leading-tight mb-5">
-              Tambacan Waste Collection
-            </h2>
-            {/* ✅ Slightly lighter paragraph text */}
-            <p className="text-gray-500 text-lg mb-10">
-              Stay informed on collection days, report issues, and help keep our community clean. Join us in making Tambacan a leader in waste management.
-            </p>
-            {/* Optional: Add a subtle Call to Action button */}
-            {/* <button className="bg-gradient-to-r from-[#b33b3b] to-[#d94f4f] text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition">Learn More</button> */}
-          </motion.div>
+        {/* === HERO SECTION (Bigger Text, Slower Fade-In) === */}
+        <section className="relative flex flex-col items-center justify-center min-h-screen text-center text-white overflow-hidden">
+          {/* The carousel now acts as a background */}
+          <AutoCarousel />
 
-          {/* Floating Image (Subtle shadow) */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0, y: [0, -8, 0] }} // Reduced float distance
-            transition={{
-              opacity: { duration: 0.8 },
-              x: { duration: 0.8 },
-              y: { duration: 5, repeat: Infinity, ease: "easeInOut" } // Slower float
-            }}
-            className="md:w-1/2 flex justify-center md:justify-end"
-          >
-             <img
-              src="/img/segs.png"
-              alt="Official Waste Management"
-              // ✅ Reduced drop-shadow
-              className="w-full max-w-md md:max-w-lg mt-10 md:mt-0 drop-shadow-md"
-            />
-          </motion.div>
-        </section>
-
-        {/* ♻️ Minimalist Segregation Tips (Increased spacing, no border) */}
-        <section className="px-12 py-24 bg-white border-y border-gray-100"> {/* Section on white bg, added border-y */}
-          <h3 className="text-3xl font-semibold text-center text-[#b33b3b] mb-12">
-            Proper Waste Segregation
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto"> {/* Centered grid */}
-            {/* Card 1: Biodegradable (Minimal style) */}
-            <motion.div
-              // ✅ More subtle hover: shadow increases
-              whileHover={{ boxShadow: '0 4px 10px -3px rgba(0, 0, 0, 0.07)' }}
-              className="bg-white rounded-xl transition flex items-center p-6 gap-5 shadow-sm" // Removed border
+          {/* Centered Text Content */}
+          <div className="relative z-10 flex flex-col items-center p-4">
+            {/* Animate the main title with a slow fade */}
+            <motion.h2
+              className="text-5xl md:text-7xl font-extrabold text-white leading-tight mb-4 drop-shadow-lg" // Increased md size
+              initial={{ opacity: 0 }} // Start invisible
+              animate={{ opacity: 1 }} // Fade to visible
+              transition={{ duration: 2.5, ease: "easeOut" }} // Slower duration (2.5s)
             >
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-50 flex items-center justify-center"> {/* Lighter bg */}
-                <Leaf size={24} className="text-green-600" />
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold mb-1 text-gray-800"> {/* Darker title for contrast */}
-                  Biodegradable
-                </h4>
-                <p className="text-gray-500 text-sm">
-                  Food scraps, garden waste, paper. Can be composted.
-                </p>
-              </div>
-            </motion.div>
+              Barangay Tambacan
+            </motion.h2>
 
-            {/* Card 2: Recyclable (Minimal style) */}
-            <motion.div
-              whileHover={{ boxShadow: '0 4px 10px -3px rgba(0, 0, 0, 0.07)' }}
-              className="bg-white rounded-xl transition flex items-center p-6 gap-5 shadow-sm" // Removed border
+            {/* Animate the subtitle after the title animation */}
+            <motion.p
+              initial={{ opacity: 0 }} // Start invisible
+              animate={{ opacity: 1 }} // Fade to visible
+              transition={{ duration: 2.0, ease: "easeOut", delay: 1.5 }} // Slower duration (2.0s), adjusted delay
+              className="text-2xl md:text-4xl font-extrabold text-gray-200 drop-shadow-lg max-w-3xl" // Increased md size, max-w
             >
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center"> {/* Lighter bg */}
-                <Recycle size={24} className="text-blue-600" />
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold mb-1 text-gray-800">
-                  Recyclable
-                </h4>
-                <p className="text-gray-500 text-sm">
-                  Bottles, cans, plastics, metals. Clean & dry first.
-                </p>
-              </div>
-            </motion.div>
-
-            {/* Card 3: Residual (Minimal style) */}
-            <motion.div
-              whileHover={{ boxShadow: '0 4px 10px -3px rgba(0, 0, 0, 0.07)' }}
-              className="bg-white rounded-xl transition flex items-center p-6 gap-5 shadow-sm" // Removed border
-            >
-              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-yellow-50 flex items-center justify-center"> {/* Lighter bg */}
-                <CalendarDays size={24} className="text-yellow-600" />
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold mb-1 text-gray-800">
-                  Residual Waste
-                </h4>
-                <p className="text-gray-500 text-sm">
-                  Styrofoam, diapers, ceramics. Non-recyclable items.
-                </p>
-              </div>
-            </motion.div>
+              Waste Collection Management System
+            </motion.p>
           </div>
         </section>
+        {/* === END OF HERO SECTION === */}
 
-        {/* ☎️ Minimalist Contact Section (Directly on bg-gray-50) */}
-        <section className="px-12 py-24"> {/* Increased py */}
-          <div className="max-w-3xl mx-auto text-center">
-             <h3 className="text-3xl font-semibold text-[#b33b3b] mb-4"> {/* Semibold title */}
-                Contact Us
-              </h3>
-              <p className="text-gray-500 mb-8"> {/* Lighter text, increased mb */}
-                Have questions? Get in touch with the Barangay Hall.
-              </p>
-              <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12"> {/* Increased gap */}
-                <div className="flex items-center gap-3 group cursor-pointer"> {/* Added group/cursor for optional hover effect */}
-                  <Phone className="w-5 h-5 text-gray-400 group-hover:text-[#b33b3b] transition" />
-                  <span className="text-gray-700 font-medium group-hover:text-[#b33b3b] transition">(0926) 321-5432</span>
-                </div>
-                <div className="flex items-center gap-3 group cursor-pointer">
-                  <Mail className="w-5 h-5 text-gray-400 group-hover:text-[#b33b3b] transition" />
-                  <span className="text-gray-700 font-medium group-hover:text-[#b33b3b] transition">wastesmart.tambacan@gmail.com</span>
-                </div>
-              </div>
-          </div>
-        </section>
+       {/* Footer */}
+<footer className="bg-white text-red-800 py-6 px-12 text-center">
+  <div className="max-w-3xl mx-auto mb-4">
+    <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
+      <div className="flex items-center gap-2 group cursor-pointer">
+        <Phone className="w-4 h-4 text-red-800 group-hover:text-red-600 transition" />
+        <span className="text-sm font-medium group-hover:text-red-600 transition">
+          (0926) 321-5432
+        </span>
+      </div>
+      <div className="flex items-center gap-2 group cursor-pointer">
+        <Mail className="w-4 h-4 text-red-800 group-hover:text-red-600 transition" />
+        <span className="text-sm font-medium group-hover:text-red-600 transition">
+          wastesmart.tambacan@gmail.com
+        </span>
+      </div>
+    </div>
+  </div>
+  <p className="text-xs text-red-700">
+    © 2025 WasteSmart Official Portal | Barangay Tambacan
+  </p>
+</footer>
 
-        {/* 🌱 Footer */}
-        <footer className="bg-[#b33b3b] text-white py-6 text-center text-sm"> {/* Smaller text */}
-          <p>© 2025 WasteSmart Official Portal | Barangay Tambacan</p>
-        </footer>
 
         {/* Login Modal */}
         <LoginModal
@@ -458,88 +443,228 @@ const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
   }
 
   // 🌿 Residents (Mobile Onboarding & Login)
-return (
-  <div className="min-h-screen flex items-center justify-center bg-white">
-    <div className="w-full max-w-md h-screen flex flex-col justify-center px-4 sm:px-6">
-      <AnimatePresence mode="wait">
-        {!started ? (
-          // Onboarding Slides
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, y: 60 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -60 }}
-            transition={{ duration: 0.45, ease: "easeInOut" }}
-            className="relative h-full flex flex-col justify-center"
-          >
-            <div className="bg-white py-6 px-5 flex flex-col items-center justify-between h-[90vh] mx-auto w-full relative overflow-hidden">
-              {/* Skip Button */}
-              <button
-                onClick={() => setStarted(true)}
-                className="absolute top-6 right-6 text-gray-500 text-sm font-medium hover:text-gray-700 transition"
-              >
-                Skip
-              </button>
-              {/* Back Arrow */}
-              {step > 0 && (
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-full max-w-md h-screen flex flex-col justify-center px-4 sm:px-6">
+        <AnimatePresence mode="wait">
+          {!started ? (
+            // Onboarding Slides
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, y: 60 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -60 }}
+              transition={{ duration: 0.45, ease: "easeInOut" }}
+              className="relative h-full flex flex-col justify-center"
+            >
+              <div className="bg-white py-6 px-5 flex flex-col items-center justify-between h-[90vh] mx-auto w-full relative overflow-hidden">
+                {/* Skip Button */}
                 <button
-                  onClick={() => setStep(step - 1)}
-                  className="absolute top-6 left-6 hover:opacity-80 transition"
+                  onClick={() => setStarted(true)}
+                  className="absolute top-6 right-6 text-gray-500 text-sm font-medium hover:text-gray-700 transition"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/> </svg>
+                  Skip
                 </button>
-              )}
-              {/* Onboarding Content */}
-              <div className="flex flex-col items-center justify-center flex-grow text-center mt-4 w-full">
-                <motion.div key={step} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex flex-col items-center w-full">
-                  <img src={onboardingScreens[step].image} alt={onboardingScreens[step].title} className="w-72 h-72 object-contain mb-6 sm:w-80 sm:h-80"/>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3 tracking-tight"> {onboardingScreens[step].title} </h2>
-                  <p className="text-gray-500 text-base leading-relaxed max-w-xs"> {onboardingScreens[step].subtitle} </p>
-                </motion.div>
-              </div>
-              {/* Progress Dots */}
-              <div className="flex justify-center items-center space-x-2 mt-4 mb-6">
-                {onboardingScreens.map((_, index) => ( <div key={index} className={`transition-all duration-300 rounded-full ${ index === step ? "w-6 h-3 bg-[#d94f4f]" : "w-3 h-3 bg-[#d94f4f]/30" }`}></div> ))}
-              </div>
-              {/* Next Button */}
-              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }} onClick={() => step < onboardingScreens.length - 1 ? setStep(step + 1) : setStarted(true) } className="bg-[#d94f4f] rounded-full p-4 shadow-lg hover:bg-[#e35d5d] transition duration-300">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/> </svg>
-              </motion.button>
-            </div>
-          </motion.div>
-        ) : (
-          // Mobile Login Screen
-          <motion.div key="login" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.6 }} className="relative bg-white text-gray-800 rounded-3xl shadow-2xl p-10 w-full max-w-sm mx-auto overflow-hidden">
-            <div className="relative z-10 flex flex-col items-center">
-              <LogIn size={65} className="text-[#d94f4f] drop-shadow-md mb-4"/>
-              <h1 className="text-3xl font-extrabold mb-3 text-[#b33b3b] animate-blink-cursor"> {displayedText} </h1>
-              <p className="text-sm text-gray-600 mb-6 text-center"> Log in to continue exploring your dashboard. </p>
-              {/* Login Form */}
-              <form onSubmit={handleLogin} className="w-full">
-                {error && ( <p className="text-red-500 text-sm mb-3 text-center"> {error} </p> )}
-                <div className="space-y-4">
-                  {/* Email Input */}
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"/>
-                    <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full pl-11 pr-4 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"/>
-                  </div>
-                  {/* Password Input */}
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"/>
-                    <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full pl-11 pr-11 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"/>
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"> {showPassword ? ( <EyeOff className="w-5 h-5"/> ) : ( <Eye className="w-5 h-5"/> )} </button>
-                  </div>
+                {/* Back Arrow */}
+                {step > 0 && (
+                  <button
+                    onClick={() => setStep(step - 1)}
+                    className="absolute top-6 left-6 hover:opacity-80 transition"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-6 h-6 text-gray-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      {" "}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15 19l-7-7 7-7"
+                      />{" "}
+                    </svg>
+                  </button>
+                )}
+                {/* Onboarding Content */}
+                <div className="flex flex-col items-center justify-center flex-grow text-center mt-4 w-full">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="flex flex-col items-center w-full"
+                  >
+                    <img
+                      src={onboardingScreens[step].image}
+                      alt={onboardingScreens[step].title}
+                      className="w-72 h-72 object-contain mb-6 sm:w-80 sm:h-80"
+                    />
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3 tracking-tight">
+                      {" "}
+                      {onboardingScreens[step].title}{" "}
+                    </h2>
+                    <p className="text-gray-500 text-base leading-relaxed max-w-xs">
+                      {" "}
+                      {onboardingScreens[step].subtitle}{" "}
+                    </p>
+                  </motion.div>
                 </div>
-                <motion.button type="submit" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.95 }} className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3.5 rounded-xl shadow-md hover:bg-opacity-90 transition"> Login </motion.button>
-                <p className="mt-8 text-sm text-center text-gray-600"> Don’t have an account?{" "} <a href="/register" className="text-blue-600 font-medium hover:underline"> Sign Up </a> </p>
-              </form>
-            </div>
-            {/* Typing Cursor Animation */}
-            <style jsx>{` .animate-blink-cursor { animation: blink 0.7s infinite; border-right: 4px solid #b33b3b; } @keyframes blink { 0%, 100% { border-color: transparent; } 50% { border-color: #b33b3b; } } `}</style>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                {/* Progress Dots */}
+                <div className="flex justify-center items-center space-x-2 mt-4 mb-6">
+                  {onboardingScreens.map((_, index) => (
+                    <div
+                      key={index}
+                      className={`transition-all duration-300 rounded-full ${
+                        index === step
+                          ? "w-6 h-3 bg-[#d94f4f]"
+                          : "w-3 h-3 bg-[#d94f4f]/30"
+                      }`}
+                    ></div>
+                  ))}
+                </div>
+                {/* Next Button */}
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() =>
+                    step < onboardingScreens.length - 1
+                      ? setStep(step + 1)
+                      : setStarted(true)
+                  }
+                  className="bg-[#d94f4f] rounded-full p-4 shadow-lg hover:bg-[#e35d5d] transition duration-300"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    {" "}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 5l7 7-7 7"
+                    />{" "}
+                  </svg>
+                </motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            // Mobile Login Screen
+            <motion.div
+              key="login"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6 }}
+              className="relative bg-white text-gray-800 rounded-3xl shadow-2xl p-10 w-full max-w-sm mx-auto overflow-hidden"
+            >
+              <div className="relative z-10 flex flex-col items-center">
+                <LogIn
+                  size={65}
+                  className="text-[#d94f4f] drop-shadow-md mb-4"
+                />
+                <h1 className="text-3xl font-extrabold mb-3 text-[#b33b3b] animate-blink-cursor">
+                  {" "}
+                  {displayedText}{" "}
+                </h1>
+                <p className="text-sm text-gray-600 mb-6 text-center">
+                  {" "}
+                  Log in to continue exploring your dashboard.{" "}
+                </p>
+                {/* Login Form */}
+                <form onSubmit={handleLogin} className="w-full">
+                  {error && (
+                    <p className="text-red-500 text-sm mb-3 text-center">
+                      {" "}
+                      {error}{" "}
+                    </p>
+                  )}
+                  <div className="space-y-4">
+                    {/* Email Input */}
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input
+                        type="email"
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        className="w-full pl-11 pr-4 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                      />
+                    </div>
+                    {/* Password Input */}
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="w-full pl-11 pr-11 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
+                      >
+                        {" "}
+                        {showPassword ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}{" "}
+                      </button>
+                    </div>
+                  </div>
+                  <motion.button
+                    type="submit"
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3.5 rounded-xl shadow-md hover:bg-opacity-90 transition"
+                  >
+                    {" "}
+                    Login{" "}
+                  </motion.button>
+                  <p className="mt-8 text-sm text-center text-gray-600">
+                    {" "}
+                    Don’t have an account?{" "}
+                    <a
+                      href="/register"
+                      className="text-blue-600 font-medium hover:underline"
+                    >
+                      {" "}
+                      Sign Up{" "}
+                    </a>{" "}
+                  </p>
+                </form>
+              </div>
+              {/* Typing Cursor Animation */}
+              <style jsx>{`
+                .animate-blink-cursor {
+                  animation: blink 0.7s infinite;
+                  border-right: 4px solid #b33b3b;
+                }
+                @keyframes blink {
+                  0%,
+                  100% {
+                    border-color: transparent;
+                  }
+                  50% {
+                    border-color: #b33b3b;
+                  }
+                }
+              `}</style>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
-  </div>
-);
+  );
 }

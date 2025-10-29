@@ -15,48 +15,70 @@ import Education from "./components-official/Education";
 export default function Home() {
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [loading, setLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData?.session;
+    const checkAuth = async () => {
+      try {
+        // ✅ Get active session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Error fetching session:", error.message);
+          router.replace("/login");
+          return;
+        }
 
-      // If no session, redirect to login
-      if (!session) {
-        router.push("/login");
-        return;
-      }
+        const user = session?.user;
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
 
-      // Check if user exists in 'officials' table
-      const { data: official, error } = await supabase
-        .from("officials")
-        .select("user_id")
-        .eq("user_id", session.user.id)
-        .single();
+        // ✅ Check if the logged-in user exists in the "users" table
+        const { data: userRecord, error: userError } = await supabase
+          .from("users")
+          .select("email, role")
+          .eq("email", user.email)
+          .single();
 
-      if (error || !official) {
-        // Not authorized
-        await supabase.auth.signOut();
-        router.push("/login");
-      } else {
-        setLoading(false);
+        if (userError || !userRecord) {
+          console.warn("User not found in users table, redirecting.");
+          await supabase.auth.signOut();
+          router.replace("/login");
+          return;
+        }
+
+        // ✅ Allow access if their role is "official" or "admin"
+        if (["official", "admin"].includes(userRecord.role)) {
+          setIsAuthorized(true);
+          setLoading(false);
+        } else {
+          console.warn(`Unauthorized role (${userRecord.role}), redirecting.`);
+          await supabase.auth.signOut();
+          router.replace("/login");
+        }
+      } catch (err) {
+        console.error("Unexpected error during auth check:", err);
+        router.replace("/login");
       }
     };
 
-    checkSession();
+    checkAuth();
   }, [router]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-lg font-semibold">Loading...</p>
+        <p className="text-lg font-semibold text-gray-700">Loading...</p>
       </div>
     );
   }
 
+  if (!isAuthorized) return null;
+
   return (
-    <div className="bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 min-h-screen">
+    <div className="bg-white min-h-screen">
       <Header />
       <NavigationTabs activeTab={activeTab} onTabChange={setActiveTab} />
       <main className="container mx-auto px-4 py-8 space-y-8">
