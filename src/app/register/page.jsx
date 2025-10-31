@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/supabaseClient";
 import {
@@ -18,7 +18,6 @@ import {
 import { motion } from "framer-motion";
 import { Listbox, Transition } from "@headlessui/react";
 
-// --- Purok Options (for Listbox) ---
 const purokOptions = Array.from({ length: 11 }, (_, i) => `Purok ${i + 1}`);
 
 export default function Register() {
@@ -35,68 +34,55 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handlePurokChange = (value) => {
-    setForm({ ...form, purok: value });
-  };
-
-  const handleInputChange = (e) => {
+  const handlePurokChange = (value) => setForm({ ...form, purok: value });
+  const handleInputChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
-  };
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
+    // ✅ Validate purok
     if (!form.purok) {
       setError("Please select your Purok.");
       setLoading(false);
       return;
     }
 
+    // ✅ Validate mobile
+    const mobileRegex = /^09\d{9}$/;
+    if (!mobileRegex.test(form.mobile_number)) {
+      setError("Please enter a valid PH mobile number (e.g., 09123456789).");
+      setLoading(false);
+      return;
+    }
+
     try {
-      // 1️⃣ Create Auth Account
+      // ✅ Create the auth account
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: {
-          data: { name: form.name },
+          data: {
+            name: form.name,
+            purok: form.purok,
+            mobile_number: form.mobile_number,
+          },
           emailRedirectTo: `${window.location.origin}/login?skipOnboarding=true`,
         },
       });
 
       if (signUpError) throw signUpError;
       const user = data.user;
-
-      if (user) {
-        // 2️⃣ Insert data into the `users` table
-        const { error: insertError } = await supabase.from("users").insert([
-          {
-            uid: user.id,
-            name: form.name,
-            email: form.email,
-            purok: form.purok,
-            mobile_number: form.mobile_number,
-            role: "resident", // ✅ Default role for registration
-          },
-        ]);
-
-        if (insertError) {
-          console.error("Error inserting user record:", insertError);
-          throw new Error(
-            "Failed to save user information. Please contact support."
-          );
-        }
-      } else {
-        throw new Error("User registration failed unexpectedly.");
-      }
+      if (!user) throw new Error("User registration failed.");
 
       alert(
         "✅ Registration successful! Please check your email to verify your account."
       );
       router.push("/login?verified=false&skipOnboarding=true");
     } catch (err) {
-      console.error("Registration error:", err.message);
+      console.error("Registration error:", err.message || err);
       setError(
         err.message || "An unexpected error occurred during registration."
       );
@@ -122,7 +108,6 @@ export default function Register() {
             Register now to start managing your waste collection.
           </p>
 
-          {/* Form */}
           <form onSubmit={handleRegister} className="w-full space-y-4">
             {/* Full Name */}
             <div className="relative">
@@ -154,7 +139,7 @@ export default function Register() {
                       {form.purok || "Select Purok"}
                     </span>
                     <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                      <ChevronsUpDown className="h-5 w-5 text-gray-400" aria-hidden="true" />
+                      <ChevronsUpDown className="h-5 w-5 text-gray-400" />
                     </span>
                   </Listbox.Button>
                   <Transition
@@ -170,7 +155,9 @@ export default function Register() {
                           value={purok}
                           className={({ active }) =>
                             `relative cursor-default select-none py-2 pl-10 pr-4 ${
-                              active ? "bg-[#fceded] text-[#b33b3b]" : "text-gray-900"
+                              active
+                                ? "bg-[#fceded] text-[#b33b3b]"
+                                : "text-gray-900"
                             }`
                           }
                         >
@@ -183,11 +170,11 @@ export default function Register() {
                               >
                                 {purok}
                               </span>
-                              {selected ? (
+                              {selected && (
                                 <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#b33b3b]">
-                                  <Check className="h-5 w-5" aria-hidden="true" />
+                                  <Check className="h-5 w-5" />
                                 </span>
-                              ) : null}
+                              )}
                             </>
                           )}
                         </Listbox.Option>
@@ -213,8 +200,7 @@ export default function Register() {
                   })
                 }
                 required
-                pattern="^09\d{9}$"
-                title="Please enter a valid PH mobile number (e.g., 09123456789)"
+                maxLength={11}
                 className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
                 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
@@ -253,15 +239,20 @@ export default function Register() {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
-                aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
               </button>
             </div>
 
             {/* Error Message */}
             {error && (
-              <p className="text-red-500 text-xs sm:text-sm text-center pt-1">{error}</p>
+              <p className="text-red-500 text-xs sm:text-sm text-center pt-1">
+                {error}
+              </p>
             )}
 
             {/* Submit */}

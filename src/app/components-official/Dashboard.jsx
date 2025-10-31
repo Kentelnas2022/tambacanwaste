@@ -71,6 +71,8 @@ export default function Dashboard() {
   const [pendingReports, setPendingReports] = useState(0);
   const [activeRoutes, setActiveRoutes] = useState(0);
   const [citizenParticipation, setCitizenParticipation] = useState(0);
+  const [totalReports, setTotalReports] = useState(0);
+  
 
   const typeStyles = {
     complete: {
@@ -126,42 +128,60 @@ export default function Dashboard() {
   // 👥 Residents
   useEffect(() => {
     const fetchResidents = async () => {
-      const { data, error, count } = await supabase
-        .from("residents")
-        .select("id, purok, mobile", { count: "exact" })
-        .neq("purok", null);
+      const { data, error } = await supabase
+        .from("users")
+        .select("uid, name, purok, role")
+        .eq("role", "resident")
+        .not("purok", "is", null)
+        .not("purok", "eq", "");
+  
       if (error) {
-        console.error("Error fetching residents:", error.message);
+        console.error("❌ Error fetching residents:", error.message);
         return;
       }
-      setAllResidents(data || []);
-      setTotalResidents(count || 0);
-      setPurokList([...new Set((data || []).map((r) => r.purok))].sort());
+  
+      console.log("✅ Residents fetched:", data);
+  
+      if (data && data.length > 0) {
+        setAllResidents(data);
+        setPurokList([...new Set(data.map((r) => r.purok).filter(Boolean))].sort());
+      } else {
+        console.warn("⚠️ No residents found or missing purok");
+      }
     };
+  
     fetchResidents();
   }, []);
-
-  // Group by purok for chart
+  
+  
+  // ✅ Group purok data for chart or summary
   useEffect(() => {
-    const filtered =
+    if (!Array.isArray(allResidents) || allResidents.length === 0) {
+      setTotalResidents(0);
+      setPurokData([]);
+      return;
+    }
+  
+    const filteredResidents =
       selectedPurok === "All"
         ? allResidents
         : allResidents.filter((r) => r.purok === selectedPurok);
-    setTotalResidents(filtered.length);
-
-    const grouped = filtered.reduce((acc, r) => {
-      acc[r.purok] = (acc[r.purok] || 0) + 1;
+  
+    setTotalResidents(filteredResidents.length);
+  
+    const groupedByPurok = filteredResidents.reduce((acc, resident) => {
+      const purokName = resident.purok?.trim() || "Unassigned";
+      acc[purokName] = (acc[purokName] || 0) + 1;
       return acc;
     }, {});
-    setPurokData(
-      Object.keys(grouped)
-        .map((purok) => ({
-          name: purok,
-          users: grouped[purok],
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-    );
+  
+    const formattedData = Object.entries(groupedByPurok)
+      .map(([purok, users]) => ({ name: purok, users }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  
+    setPurokData(formattedData);
   }, [allResidents, selectedPurok]);
+  
 
   // 🧾 Compliance (static)
   useEffect(() => {
