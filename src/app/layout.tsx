@@ -1,29 +1,38 @@
 import "./globals.css";
 import type { ReactNode } from "react";
+// 1. Import Viewport from 'next'
+import type { Metadata, Viewport } from 'next';
 
-export const metadata = {
+// 2. Metadata object no longer contains themeColor
+export const metadata: Metadata = {
   title: "Waste Collection Schedule on Brgy Tambacan",
   description: "UI for residents management",
-  themeColor: "#0d9488", // For browsers & Android PWA header
   manifest: "/manifest.webmanifest", // Required for PWA
   icons: {
     icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
   },
+  // PWA settings are now handled here
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+  },
+  applicationName: "Waste App",
+};
+
+// 3. Added a new Viewport export for themeColor
+export const viewport: Viewport = {
+  themeColor: "#0d9488", // For browsers & Android PWA header
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        {/* ✅ PWA Essentials */}
-        <link rel="manifest" href="/manifest.webmanifest" />
-        <meta name="theme-color" content="#0d9488" />
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-      </head>
+      {/* 4. The <head> is now clean! 
+        Next.js will automatically add the manifest and theme-color tags 
+        from the metadata and viewport exports above.
+      */}
+      <head />
       <body className="min-h-screen bg-gradient-to-br from-pink-50 to-red-100">
         {children}
       </body>
