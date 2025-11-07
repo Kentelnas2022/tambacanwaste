@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   CalendarDaysIcon,
   ArchiveBoxArrowDownIcon,
+  XMarkIcon, // Import the X icon
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/supabaseClient";
 import {
@@ -58,10 +59,12 @@ export default function Schedule() {
 
   // Fetch schedules from Supabase
   const fetchSchedules = async () => {
+    // Note: 'schedules' table is used for both fetch and insert
     const { data, error } = await supabase
       .from("schedules")
       .select("*")
       .order("created_at", { ascending: false });
+    if (error) console.error("Error fetching schedules:", error.message);
     if (!error) setSchedules(data || []);
   };
 
@@ -71,6 +74,7 @@ export default function Schedule() {
       .from("archived_schedules")
       .select("*")
       .order("created_at", { ascending: false });
+    if (error) console.error("Error fetching archived schedules:", error.message);
     if (!error) setArchivedSchedules(data || []);
   };
 
@@ -100,7 +104,20 @@ export default function Schedule() {
   // Add new schedule
   const handleAddSchedule = async (e) => {
     e.preventDefault();
+
+    const { data: userData } = await supabase.auth.getUser();
+
+    if (!userData.user) {
+      console.error("Authentication Error: No user logged in.");
+      Swal.fire("Error", "You must be logged in to add a schedule.", "error");
+      return;
+    }
+
+    const user_id = userData.user.id;
+
+    // ✅ FIX: stringify routePoints BEFORE saving
     const routeJson = JSON.stringify(routePoints || []);
+
     const schedulePayload = {
       purok,
       plan: "A",
@@ -110,7 +127,8 @@ export default function Schedule() {
       end_time: endTime,
       waste_type: wasteType,
       status,
-      route_points: routeJson,
+      route_points: routeJson, // ✅ FIXED
+      created_by_id: user_id,
     };
 
     const { data, error } = await supabase
@@ -118,82 +136,104 @@ export default function Schedule() {
       .insert([schedulePayload])
       .select("*");
 
-    if (error) Swal.fire("Error", "Failed to add schedule", "error");
-    else {
+    if (error) {
+      console.error("Supabase Insert Error:", error);
+      Swal.fire(
+        "Error",
+        `Failed to add schedule. Details: ${error.message}`,
+        "error"
+      );
+    } else {
+      // ✅ Update UI instantly
       setSchedules((prev) => [data[0], ...prev]);
+
       Swal.fire("Success!", "New schedule has been added.", "success");
+
+      // ✅ Optional: Clear routePoints after save
+      setRoutePoints([]);
+
       setIsModalOpen(false);
     }
   };
 
   // Archive a schedule
   const handleArchive = async (sched) => {
-  const confirm = await Swal.fire({
-    title: "Archive Schedule?",
-    text: "This will move the schedule to the archive list.",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonText: "Yes, archive it",
-    cancelButtonText: "Cancel",
-    confirmButtonColor: "#2563eb",
-  });
-  if (!confirm.isConfirmed) return;
+    const confirm = await Swal.fire({
+      title: "Archive Schedule?",
+      text: "This will move the schedule to the archive list.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, archive it",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#2563eb",
+    });
+    if (!confirm.isConfirmed) return;
 
-  // Ensure that required fields exist before archiving
-  if (!sched.schedule_id || !sched.date || !sched.purok || !sched.day) {
-    return Swal.fire("Error", "Missing required schedule information.", "error");
-  }
+    // Ensure that required fields exist before archiving
+    if (!sched.schedule_id || !sched.date || !sched.purok || !sched.day) {
+      return Swal.fire("Error", "Missing required schedule information.", "error");
+    }
 
-  // Create an archived schedule object without the schedule_id
-  const archivedItem = {
-    schedule_id: sched.schedule_id, // Keep the reference to the original schedule
-    date: sched.date || null,
-    purok: sched.purok || null,
-    day: sched.day || null,
-    waste_type: sched.waste_type || null,
-    status: sched.status || "not-started", // Default to "not-started" if empty
-    start_time: sched.start_time || null,
-    end_time: sched.end_time || null,
-    plan: sched.plan || "A", // Default to "A" if empty
-    route_points: sched.route_points || "[]", // Ensure JSONB field is correctly formatted
-    scheduled_start: null,
-    scheduled_end: null,
-    actual_end: null,
-    created_at: new Date().toISOString(), // Using the current date for creation
+    // Create an archived schedule object
+    const archivedItem = {
+      schedule_id: sched.schedule_id,
+      date: sched.date || null,
+      purok: sched.purok || null,
+      day: sched.day || null,
+      waste_type: sched.waste_type || null,
+      status: sched.status || "not-started",
+      start_time: sched.start_time || null,
+      end_time: sched.end_time || null,
+      plan: sched.plan || "A",
+      route_points: sched.route_points || "[]",
+      scheduled_start: null,
+      scheduled_end: null,
+      actual_end: null,
+      // Pass created_by_id from the original schedule if it exists
+      created_by_id: sched.created_by_id || null,
+      created_at: new Date().toISOString(),
+    };
+
+    try {
+      // Insert the schedule into archived_schedules
+      const { error: insertError } = await supabase
+        .from("archived_schedules")
+        .insert([archivedItem]);
+
+      if (insertError) {
+        console.error("Insert Error:", insertError.message);
+        return Swal.fire("Error", "Failed to archive schedule", "error");
+      }
+
+      // Delete the schedule from the original schedules table
+      const { error: deleteError } = await supabase
+        .from("schedules")
+        .delete()
+        .eq("schedule_id", sched.schedule_id);
+
+      if (deleteError) {
+        console.error("Delete Error:", deleteError.message);
+        return Swal.fire(
+          "Error",
+          "Failed to remove schedule from main table",
+          "error"
+        );
+      }
+
+      // Fetch updated schedules and archived schedules after the operation
+      await fetchSchedules();
+      await fetchArchived();
+
+      Swal.fire("Archived!", "Schedule has been archived successfully.", "success");
+    } catch (err) {
+      console.error("Error during archive operation:", err);
+      Swal.fire(
+        "Error",
+        "Something went wrong during archiving. Please check console.",
+        "error"
+      );
+    }
   };
-
-  try {
-    // Insert the schedule into archived_schedules
-    const { error: insertError } = await supabase
-      .from("archived_schedules")
-      .insert([archivedItem]);
-
-    if (insertError) {
-      console.error("Insert Error:", insertError.message);
-      return Swal.fire("Error", "Failed to archive schedule", "error");
-    }
-
-    // Delete the schedule from the original schedules table
-    const { error: deleteError } = await supabase
-      .from("schedules")
-      .delete()
-      .eq("schedule_id", sched.schedule_id);
-
-    if (deleteError) {
-      console.error("Delete Error:", deleteError.message);
-      return Swal.fire("Error", "Failed to remove schedule from main table", "error");
-    }
-
-    // Fetch updated schedules and archived schedules after the operation
-    await fetchSchedules();
-    await fetchArchived();
-
-    Swal.fire("Archived!", "Schedule has been archived successfully.", "success");
-  } catch (err) {
-    console.error("Error during archive operation:", err);
-    Swal.fire("Error", "Something went wrong during archiving. Please check console.", "error");
-  }
-};
 
   // Restore archived schedule
   const handleRestore = async (sched) => {
@@ -222,6 +262,8 @@ export default function Schedule() {
         scheduled_start: null,
         scheduled_end: null,
         actual_end: null,
+        // Include created_by_id for the restored schedule
+        created_by_id: sched.created_by_id || null,
       };
 
       const { data: insertData, error: insertError } = await supabase
@@ -240,7 +282,11 @@ export default function Schedule() {
 
       await fetchSchedules();
       await fetchArchived();
-      Swal.fire("Restored!", "Schedule has been moved back successfully.", "success");
+      Swal.fire(
+        "Restored!",
+        "Schedule has been moved back successfully.",
+        "success"
+      );
     } catch (err) {
       console.error("Restore failed:", err);
       Swal.fire("Error", "Failed to restore schedule. Check console.", "error");
@@ -282,9 +328,8 @@ export default function Schedule() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-10">
+    <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-        <CalendarDaysIcon className="w-7 h-7 text-red-600" />
         Manage Garbage Collection Schedule
       </h2>
 
@@ -292,7 +337,7 @@ export default function Schedule() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg px-4 py-2 bg-gray-100 text-gray-800"
+          className="rounded-lg px-4 py-2 bg-gray-100 text-gray-800 border-gray-300 border"
         >
           <option value="all">All</option>
           <option value="not-started">Not Started</option>
@@ -309,7 +354,7 @@ export default function Schedule() {
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all"
+            className="bg-red-800 hover:bg-red-700 text-white px-5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all"
           >
             + Add Schedule
           </button>
@@ -333,7 +378,9 @@ export default function Schedule() {
             <tbody>
               {filteredSchedules.map((sched) => (
                 <tr key={sched.schedule_id} className="hover:bg-gray-50">
-                  <td className="py-3 px-4">{formatDate(sched.date, sched.day)}</td>
+                  <td className="py-3 px-4">
+                    {formatDate(sched.date, sched.day)}
+                  </td>
                   <td className="py-3 px-4">Purok {sched.purok}</td>
                   <td className="py-3 px-4">
                     {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
@@ -361,7 +408,10 @@ export default function Schedule() {
               ))}
               {filteredSchedules.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-5 text-gray-500 italic">
+                  <td
+                    colSpan={7}
+                    className="text-center py-5 text-gray-500 italic"
+                  >
                     No schedules available
                   </td>
                 </tr>
@@ -371,185 +421,290 @@ export default function Schedule() {
         </div>
       </div>
 
-     {/* Archive Modal */}
-{isArchiveModalOpen && (
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50 transition-all duration-300">
-    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100 animate-fadeIn">
-      {/* Header */}
-      <div className="flex justify-between items-center border-b px-6 py-4 bg-gray-50">
-        <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-          <ArchiveBoxArrowDownIcon className="w-6 h-6 text-gray-600" />
-          Archived Schedules
-        </h3>
-        <button
-          onClick={() => setIsArchiveModalOpen(false)}
-          className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
+      {/* --- MODIFIED: Archive Modal z-index --- */}
+      {isArchiveModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-[300] transition-all duration-300 p-4" // <-- z-index changed to 300
         >
-          ✕
-        </button>
-      </div>
-
-      {/* Table Section */}
-      <div className="overflow-y-auto max-h-[65vh] p-6">
-        <table className="min-w-full border border-gray-200 rounded-lg overflow-hidden">
-          <thead>
-            <tr className="bg-gray-100 text-gray-700 text-sm uppercase">
-              <th className="py-3 px-4 text-left">Date</th>
-              <th className="py-3 px-4 text-left">Purok</th>
-              <th className="py-3 px-4 text-left">Time</th>
-              <th className="py-3 px-4 text-left">Plan</th>
-              <th className="py-3 px-4 text-left">Waste Type</th>
-              <th className="py-3 px-4 text-center">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {archivedSchedules.map((sched) => (
-              <tr
-                key={sched.schedule_id}
-                className="hover:bg-gray-50 transition-colors duration-200"
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100 flex flex-col">
+            {/* Header */}
+            <div className="flex justify-between items-center border-b px-6 py-4 bg-gray-50">
+              <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                <ArchiveBoxArrowDownIcon className="w-6 h-6 text-gray-600" />
+                Archived Schedules
+              </h3>
+              <button
+                onClick={() => setIsArchiveModalOpen(false)}
+                className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
               >
-                <td className="py-3 px-4 text-gray-800">
-                  {formatDate(sched.date, sched.day)}
-                </td>
-                <td className="py-3 px-4 text-gray-700">Purok {sched.purok}</td>
-                <td className="py-3 px-4 text-gray-700">
-                  {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
-                </td>
-                <td className="py-3 px-4 text-gray-700">{sched.plan}</td>
-                <td className="py-3 px-4 text-gray-700">{sched.waste_type}</td>
-                <td className="py-3 px-4 text-center">
-                  <button
-                    onClick={() => handleRestore(sched)}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 shadow-sm"
-                  >
-                    Restore
-                  </button>
-                </td>
-              </tr>
-            ))}
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
 
-            {archivedSchedules.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="text-center py-6 text-gray-500 italic"
-                >
-                  No archived schedules found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer */}
-      <div className="flex justify-end border-t px-6 py-4 bg-gray-50">
-        <button
-          onClick={() => setIsArchiveModalOpen(false)}
-          className="px-5 py-2 text-gray-700 hover:text-gray-900 border rounded-lg hover:bg-gray-100 transition-all duration-200"
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* Add Schedule Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-red-600 mb-2">
-              Add New Schedule (Plan A)
-            </h3>
-            <form onSubmit={handleAddSchedule} className="space-y-3">
-              <input
-                type="date"
-                value={date}
-                onChange={handleDateChange}
-                className="w-full border p-2 rounded"
-                required
-              />
-              <input
-                type="text"
-                value={day}
-                readOnly
-                className="w-full border p-2 rounded bg-gray-100"
-              />
-              <select
-                value={purok}
-                onChange={(e) => setPurok(e.target.value)}
-                className="w-full border p-2 rounded"
-                required
-              >
-                <option value="">Select Purok</option>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    Purok {i + 1}
-                  </option>
-                ))}
-              </select>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full border p-2 rounded"
-                  required
-                />
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full border p-2 rounded"
-                  required
-                />
-              </div>
-              <select
-                value={wasteType}
-                onChange={(e) => setWasteType(e.target.value)}
-                className="w-full border p-2 rounded"
-                required
-              >
-                <option value="">Select Waste Type</option>
-                <option value="Recyclable Materials">♻️ Recyclable</option>
-                <option value="Toxic Materials">☣️ Toxic</option>
-                <option value="Non-Recyclable Materials">
-                  🗑️ Non-Recyclable
-                </option>
-              </select>
-
-              <div className="border rounded-lg overflow-hidden h-60">
-                <MapContainer
-                  center={[8.228, 124.245]}
-                  zoom={13}
-                  className="h-full w-full"
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution="© OpenStreetMap"
-                  />
-                  <RoutePicker points={routePoints} setPoints={setRoutePoints} />
-                  {routePoints.map((pos, i) => (
-                    <Marker key={i} position={pos} />
+            {/* Table Section */}
+            <div className="overflow-y-auto max-h-[65vh] p-6">
+              <table className="min-w-full border border-gray-200 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700 text-sm uppercase">
+                    <th className="py-3 px-4 text-left">Date</th>
+                    <th className="py-3 px-4 text-left">Purok</th>
+                    <th className="py-3 px-4 text-left">Time</th>
+                    <th className="py-3 px-4 text-left">Plan</th>
+                    <th className="py-3 px-4 text-left">Waste Type</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {archivedSchedules.map((sched) => (
+                    <tr
+                      key={sched.schedule_id}
+                      className="hover:bg-gray-50 transition-colors duration-200"
+                    >
+                      <td className="py-3 px-4 text-gray-800">
+                        {formatDate(sched.date, sched.day)}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">
+                        Purok {sched.purok}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">
+                        {formatTime(sched.start_time)} -{" "}
+                        {formatTime(sched.end_time)}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">{sched.plan}</td>
+                      <td className="py-3 px-4 text-gray-700">
+                        {sched.waste_type}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => handleRestore(sched)}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 shadow-sm"
+                        >
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
                   ))}
-                  {routePoints.length === 2 && (
-                    <Polyline positions={routePoints} color="red" />
+
+                  {archivedSchedules.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="text-center py-6 text-gray-500 italic"
+                      >
+                        No archived schedules found.
+                      </td>
+                    </tr>
                   )}
-                </MapContainer>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end border-t px-6 py-4 bg-gray-50">
+              <button
+                onClick={() => setIsArchiveModalOpen(false)}
+                className="px-5 py-2 text-gray-700 hover:text-gray-900 border rounded-lg hover:bg-gray-100 transition-all duration-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODIFIED: Add Schedule Modal z-index --- */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[300] p-4" // <-- z-index changed to 300
+          onClick={() => setIsModalOpen(false)} // Close on backdrop click
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()} // Prevent click from closing modal
+          >
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Add New Schedule (Plan A)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+              >
+                <XMarkIcon className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Form Body - Scrollable */}
+            <form
+              onSubmit={handleAddSchedule}
+              className="overflow-y-auto p-6 space-y-4"
+            >
+              {/* Date and Day */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="date"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    id="date"
+                    value={date}
+                    onChange={handleDateChange}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="day"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Day
+                  </label>
+                  <input
+                    type="text"
+                    id="day"
+                    value={day}
+                    readOnly
+                    className="w-full border-gray-300 p-2 border rounded-md bg-gray-100 text-gray-500"
+                  />
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2 mt-3">
+              {/* Purok */}
+              <div>
+                <label
+                  htmlFor="purok"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Purok
+                </label>
+                <select
+                  id="purok"
+                  value={purok}
+                  onChange={(e) => setPurok(e.target.value)}
+                  className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                  required
+                >
+                  <option value="">Select Purok</option>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      Purok {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Start and End Time */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="start_time"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    id="start_time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="end_time"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    id="end_time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Waste Type */}
+              <div>
+                <label
+                  htmlFor="waste_type"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Waste Type
+                </label>
+                <select
+                  id="waste_type"
+                  value={wasteType}
+                  onChange={(e) => setWasteType(e.target.value)}
+                  className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                  required
+                >
+                  <option value="">Select Waste Type</option>
+                  <option value="Recyclable Materials">♻️ Recyclable</option>
+                  <option value="Toxic Materials">☣️ Toxic</option>
+                  <option value="Non-Recyclable Materials">
+                    🗑️ Non-Recyclable
+                  </option>
+                </select>
+              </div>
+
+              {/* Map */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Route Points (Click 2 points on map)
+                </label>
+                <div className="overflow-hidden h-60 rounded-lg border border-gray-300">
+                  <MapContainer
+                    center={[8.228, 124.245]}
+                    zoom={13}
+                    className="h-full w-full"
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution="© OpenStreetMap"
+                    />
+                    <RoutePicker
+                      points={routePoints}
+                      setPoints={setRoutePoints}
+                    />
+                    {routePoints.map((pos, i) => (
+                      <Marker key={i} position={pos} />
+                    ))}
+                    {routePoints.length === 2 && (
+                      <Polyline
+                        positions={routePoints}
+                        color="transparent"
+                        weight={0}
+                      />
+                    )}
+                  </MapContainer>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border rounded"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                  className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-md text-sm font-medium"
                 >
                   Save
                 </button>

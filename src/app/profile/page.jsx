@@ -295,10 +295,12 @@ export default function Profile() {
               >
                 Change Password
               </button>
+              
+              {/* ✅ FIX IS HERE (class -> className) */}
               <button
                 onClick={() => setShowLogoutModal(true)}
-                class ="w-full bg-red-100 rounded-2xl p-4 mt-3 text-left text-[#8B0000] font-semibold hover:bg-[#8B0000] hover:text-white transition"
-               >
+                className="w-full bg-red-100 rounded-2xl p-4 mt-3 text-left text-[#8B0000] font-semibold hover:bg-[#8B0000] hover:text-white transition"
+              >
                 Logout
               </button>
             </div>

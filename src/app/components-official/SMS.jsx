@@ -294,7 +294,7 @@ export default function SMS() {
         icon: "error",
         title: "Oops...",
         text: "Please enter a message before sending.",
-        confirmButtonColor: "#ef4444", // Red
+        confirmButtonColor: "#b33b3b", // Red
         customClass: {
           title: "text-2xl font-semibold text-gray-900",
           popup: "rounded-2xl shadow-lg",
@@ -324,7 +324,7 @@ export default function SMS() {
           text:
             "Failed to send SMS via Vonage: " +
             (result.error || "Unknown error"),
-          confirmButtonColor: "#ef4444",
+          confirmButtonColor: "#b33b3b",
           customClass: {
             title: "text-2xl font-semibold text-gray-900",
             popup: "rounded-2xl shadow-lg",
@@ -352,7 +352,7 @@ export default function SMS() {
           icon: "error",
           title: "Archive Failed",
           text: "The message sent, but failed to save to history.",
-          confirmButtonColor: "#ef4444",
+          confirmButtonColor: "#b33b3b",
           customClass: {
             title: "text-2xl font-semibold text-gray-900",
             popup: "rounded-2xl shadow-lg",
@@ -406,7 +406,7 @@ export default function SMS() {
         icon: "error",
         title: "A Client Error Occurred",
         text: `An error occurred: ${err.message}`,
-        confirmButtonColor: "#ef4444",
+        confirmButtonColor: "#b33b3b",
         customClass: {
           title: "text-2xl font-semibold text-gray-900",
           popup: "rounded-2xl shadow-lg",
@@ -530,7 +530,7 @@ export default function SMS() {
 
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-3 rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:opacity-50"
+              className="w-full bg-red-900 hover:bg-red-700 text-white py-2.5 px-3 rounded-lg text-sm font-semibold transition-all shadow-sm flex items-center justify-center gap-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50"
               disabled={isSending}
             >
               {isSending ? (

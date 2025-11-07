@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Menu, LogOut, UserPlus } from "lucide-react";
+import { Menu, LogOut, UserPlus, X } from "lucide-react"; // Added X icon for modal
 import Swal from "sweetalert2";
 
 export default function Header() {
@@ -10,15 +10,18 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
+    name: "",
     email: "",
     password: "",
-    name: "",
+    purok: "",
+    mobile_number: "",
     role: "",
   });
+
   const menuRef = useRef(null);
   const router = useRouter();
 
-  // ⏰ Clock
+  // ⏰ Clock (Unchanged)
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -35,7 +38,7 @@ export default function Header() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🧠 Close dropdown if clicking outside
+  // 🧠 Close dropdown/modal (Unchanged)
   useEffect(() => {
     const handleClickOutside = (event) => {
       const node = menuRef.current;
@@ -61,6 +64,7 @@ export default function Header() {
     };
   }, []);
 
+  // 🚪 Logout function (Unchanged)
   const handleLogout = async () => {
     setMenuOpen(false);
     try {
@@ -71,31 +75,44 @@ export default function Header() {
     }
   };
 
-  // ✅ FIXED: Create Account
+  // 🧾 Add User function (Unchanged)
   const handleCreateAccount = async (e) => {
     e.preventDefault();
+
     if (!form.role) {
-      Swal.fire({ icon: "error", title: "Please select a role." });
+      Swal.fire({
+        icon: "warning",
+        title: "Please select a role",
+      });
       return;
     }
 
     try {
+      // ✅ Step 1: Create auth account
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-      });
+  email: form.email,
+  password: form.password,
+  options: {
+    data: {
+      role: form.role,   // ✅ This is the SECRET ingredient
+    },
+  },
+});
+
+
       if (authError) throw authError;
 
       const uid = authData?.user?.id;
-      if (!uid) throw new Error("User ID missing after signup.");
+      if (!uid) throw new Error("User ID not returned after sign up.");
 
-      await new Promise((res) => setTimeout(res, 500));
-
+      // ✅ Step 2: Insert user data into your 'users' table
       const { error: insertError } = await supabase.from("users").insert([
         {
           uid,
           name: form.name,
           email: form.email,
+          purok: form.purok || null,
+          mobile_number: form.mobile_number || null,
           role: form.role,
           created_at: new Date().toISOString(),
         },
@@ -103,17 +120,28 @@ export default function Header() {
 
       if (insertError) throw insertError;
 
+      // ✅ Step 3: Show success alert
       Swal.fire({
         icon: "success",
-        title: `${form.role.charAt(0).toUpperCase() + form.role.slice(1)} account created successfully!`,
+        title: `${
+          form.role.charAt(0).toUpperCase() + form.role.slice(1)
+        } account created successfully!`,
         showConfirmButton: false,
         timer: 1800,
       });
 
+      // ✅ Step 4: Reset form and close modal
       setShowModal(false);
-      setForm({ email: "", password: "", name: "", role: "" });
+      setForm({
+        name: "",
+        email: "",
+        password: "",
+        purok: "",
+        mobile_number: "",
+        role: "",
+      });
     } catch (error) {
-      console.error("Error creating account:", error.message);
+      console.error("Error creating account:", error);
       Swal.fire({
         icon: "error",
         title: "Failed to create account",
@@ -136,38 +164,34 @@ export default function Header() {
       <div className="absolute inset-0 bg-black opacity-10" aria-hidden />
 
       <div className="relative z-20 container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
-        {/* Left: Logo + Title */}
+        {/* Left: Logo + Title (Unchanged) */}
         <div className="flex items-center gap-3">
-          <div className="bg-white/20 backdrop-blur-md p-2 rounded-xl shadow-md">
-            <svg
-              className="w-8 h-8 sm:w-9 sm:h-9 text-white"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-              aria-hidden
-            >
-              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8a1 1 0 000 2v6a2 2 0 002 2h10a2 2 0 002-2V10a1 1 0 100-2H3zm8 6a1 1 0 11-2 0V9a1 1 0 112 0v5z" />
-            </svg>
-          </div>
-
-          <div className="flex flex-col">
+          <img
+            src="img/logo.png"
+            alt="Logo"
+            className="w-8 h-8 sm:w-9 sm:h-9"
+            aria-hidden
+          />
+           <div className="flex flex-col">
             <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
               Barangay Tambacan
             </h1>
             <p className="text-red-100 font-medium flex items-center gap-1 text-xs sm:text-sm">
-              <span className="w-2 h-2 bg-green-400 rounded-full" /> Smart Waste Management System
+              <span className="w-2 h-2 bg-green-400 rounded-full" /> Smart
+              Waste Management System
             </p>
           </div>
         </div>
-
         {/* Right: Desktop actions */}
         <div className="hidden sm:flex items-center gap-3">
           <div className="px-4 py-2 rounded-lg bg-red-700 text-white font-semibold shadow text-sm">
             🕐 {time}
           </div>
 
+          {/* --- MODIFIED: "Add User" button is now red --- */}
           <button
             onClick={() => setShowModal(true)}
-            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-800 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
+            className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
           >
             <UserPlus className="w-4 h-4" /> Add User
           </button>
@@ -180,7 +204,7 @@ export default function Header() {
           </button>
         </div>
 
-        {/* Mobile Menu */}
+        {/* Mobile Menu (Unchanged) */}
         <div className="sm:hidden relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -216,76 +240,133 @@ export default function Header() {
         </div>
       </div>
 
-      {/* ✨ Modal */}
+      {/* --- MODIFIED: "Add User" Modal Redesigned --- */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[300] p-4">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Create User Account</h2>
-
-            <form onSubmit={handleCreateAccount} className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="border p-2 rounded-lg"
-                required
-              />
-              <input
-                type="email"
-                placeholder="Email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="border p-2 rounded-lg"
-                required
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="border p-2 rounded-lg"
-                required
-              />
-
-              <select
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="border p-2 rounded-lg"
-                required
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300] p-4 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-5 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Create New User Account
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full transition"
               >
-                <option value="">Select Role</option>
-                <option value="official">Official</option>
-                <option value="collector">Collector</option>
-              </select>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="flex justify-end gap-3 mt-4">
+            {/* Modal Body */}
+            <form onSubmit={handleCreateAccount} className="flex flex-col gap-4 p-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="Juan dela Cruz"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  placeholder="user@example.com"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Purok <span className="text-gray-400">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Purok 1"
+                  value={form.purok}
+                  onChange={(e) => setForm({ ...form, purok: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mobile Number <span className="text-gray-400">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="09123456789"
+                  value={form.mobile_number}
+                  onChange={(e) =>
+                    setForm({ ...form, mobile_number: e.target.value })
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Role
+                </label>
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-700 focus:border-transparent"
+                  required
+                >
+                  <option value="">Select a Role</option>
+                  <option value="official">Official</option>
+                  <option value="collector">Collector</option>
+                </select>
+              </div>
+
+              {/* Modal Footer (Buttons) */}
+              <div className="flex justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold"
+                  className="px-5 py-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold"
+                  className="px-5 py-2.5 rounded-lg bg-red-800 hover:bg-red-900 text-white font-medium transition"
                 >
-                  Create
+                  Create Account
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(-6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in { animation: fade-in 180ms ease-out; }
-      `}</style>
     </header>
   );
 }

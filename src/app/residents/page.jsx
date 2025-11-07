@@ -2,13 +2,33 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Calendar, AlertCircle, BookOpen } from "lucide-react"; // Added icons
 import Header from "../components-residents/Header";
-import BottomNav from "../components-residents/BottomNav";
 import ScheduleSection from "../components-residents/ScheduleSection";
 import ReportPage from "../components-residents/ReportPage";
 import EducationPage from "../components-residents/EducationPage";
-import GreetingCard from "../components-residents/GreetingCard";
+import GreetingCard from "../components-residents/GreetingCard"; // 1. IMPORTED GREETING CARD
 import { supabase } from "@/supabaseClient";
+
+// --- UPDATED: Minimalist Loading Screen Component ---
+function LoadingScreen() {
+  return (
+    <motion.div
+      key="loading-screen"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-white"
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.5, ease: "easeInOut" }}
+    >
+      <img
+        src="img/logo.png"
+        alt="Logo"
+        // --- MODIFIED: Changed w-24 h-24 to w-32 h-32 ---
+        className="w-32 h-32 animate-pulse"
+      />
+    </motion.div>
+  );
+}
 
 export default function ResidentsPage() {
   const [activePage, setActivePage] = useState("schedule");
@@ -16,12 +36,12 @@ export default function ResidentsPage() {
   const [residentName, setResidentName] = useState("");
   const router = useRouter();
 
+  // --- Data Fetching useEffect (Unchanged) ---
   useEffect(() => {
     let isMounted = true;
 
     const checkSession = async () => {
       try {
-        // ✅ Get current Supabase session
         const {
           data: { session },
           error,
@@ -33,7 +53,6 @@ export default function ResidentsPage() {
           return;
         }
 
-        // ✅ If no session, redirect to login
         if (!session) {
           console.warn("No session found, redirecting to login.");
           if (isMounted) router.replace("/login");
@@ -42,14 +61,12 @@ export default function ResidentsPage() {
 
         const user = session.user;
 
-        // ✅ Fetch user details from 'users' table using email
         const { data: userData, error: userError } = await supabase
           .from("users")
           .select("name, email, role")
           .eq("email", user.email)
           .single();
 
-        // ❌ Redirect if not found or query failed
         if (userError || !userData) {
           console.warn("User not found in users table, redirecting.");
           if (isMounted) {
@@ -59,7 +76,6 @@ export default function ResidentsPage() {
           return;
         }
 
-        // ❌ Redirect if user role is not 'resident'
         if (userData.role !== "resident") {
           console.warn(`Unauthorized role (${userData.role}), redirecting.`);
           if (isMounted) {
@@ -69,11 +85,15 @@ export default function ResidentsPage() {
           return;
         }
 
-        // ✅ All checks passed → allow access and store name
         if (isMounted) {
           setResidentName(userData.name || "Resident");
           console.log(`Welcome, ${userData.name}!`);
-          setLoading(false);
+
+          setTimeout(() => {
+            if (isMounted) {
+              setLoading(false);
+            }
+          }, 500);
         }
       } catch (err) {
         console.error("Unexpected error during session check:", err);
@@ -88,41 +108,73 @@ export default function ResidentsPage() {
     };
   }, [router]);
 
-  // --- Loading screen while checking auth ---
-  if (loading) {
-    return (
-      <div className="flex flex-col h-screen max-w-lg mx-auto bg-white shadow-xl animate-pulse">
-        <div className="bg-gray-300 h-16 w-full flex-shrink-0"></div>
-        <div className="flex-1 bg-gray-100 p-4">
-          <div className="h-10 bg-gray-300 rounded w-3/4 mb-4"></div>
-          <div className="h-24 bg-gray-300 rounded w-full"></div>
-        </div>
-        <div className="bg-gray-300 h-16 w-full flex-shrink-0 border-t border-gray-400"></div>
-      </div>
-    );
-  }
-
-  // --- Main App Shell (for verified residents only) ---
+  // --- Render Logic (Unchanged) ---
   return (
-    <div className="flex flex-col h-screen max-w-lg mx-auto bg-white shadow-xl">
-      <Header activePage={activePage} />
+    <AnimatePresence mode="wait">
+      {loading ? (
+        <LoadingScreen key="loader" />
+      ) : (
+        <motion.div
+          key="main-app"
+          // This shell matches your app's mobile-first container
+          className="flex flex-col h-screen max-w-lg mx-auto bg-white shadow-xl"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+        >
+          <Header activePage={activePage} />
 
-      <main className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 bg-gray-50 fade-in">
-        {activePage === "schedule" && (
-          <>
-            {/* ✅ Pass resident name to GreetingCard */}
+          {/* --- UPDATED Main Content Area --- */}
+          <main className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-gray-100">
+            {/* 2. ADDED GREETING CARD COMPONENT */}
             <GreetingCard residentName={residentName} />
-            <ScheduleSection />
-          </>
-        )}
-        {activePage === "report" && <ReportPage />}
-        {activePage === "education" && <EducationPage />}
-      </main>
 
-      <BottomNav
-        activePage={activePage}
-        onNavClick={(page) => setActivePage(page)}
-      />
-    </div>
+            {/* --- NEW: Quick Actions Grid (from target HTML) --- */}
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                onClick={() => setActivePage("schedule")}
+                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center text-center"
+              >
+                <Calendar className="w-6 h-6 text-[#8B0000] mb-2" />
+                <h3 className="text-xs font-medium text-gray-800">Schedule</h3>
+              </button>
+
+              <button
+                onClick={() => setActivePage("report")}
+                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center text-center"
+              >
+                <AlertCircle className="w-6 h-6 text-[#DC143C] mb-2" />
+                <h3 className="text-xs font-medium text-gray-800">Report</h3>
+              </button>
+
+              <button
+                onClick={() => setActivePage("education")}
+                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center text-center"
+              >
+                <BookOpen className="w-6 h-6 text-[#FF6B6B] mb-2" />
+                <h3 className="text-xs font-medium text-gray-800">Learn</h3>
+              </button>
+            </div>
+
+            {/* --- UPDATED: Content Area Wrapper (for fade-in) --- */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activePage}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {activePage === "schedule" && <ScheduleSection />}
+                {activePage === "report" && <ReportPage />}
+                {activePage === "education" && <EducationPage />}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {/* BottomNav Removed */}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

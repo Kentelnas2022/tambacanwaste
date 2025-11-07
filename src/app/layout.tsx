@@ -2,7 +2,7 @@ import "./globals.css";
 import type { ReactNode } from "react";
 
 export const metadata = {
-  title: "Tambacan Waste App",
+  title: "Waste Collection Schedule on Brgy Tambacan",
   description: "UI for residents management",
   themeColor: "#0d9488", // For browsers & Android PWA header
   manifest: "/manifest.webmanifest", // Required for PWA

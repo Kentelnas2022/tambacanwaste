@@ -90,7 +90,7 @@ export function StatusModal({ purok, onClose, onUpdate }) {
 
       if (typeof onUpdate === "function") {
         const updated = data[0] || { ...purok, ...payload };
-        onUpdate(updated);
+        onUpdate(updated); // This sends the FULL updated object back
       }
 
       Swal.fire({
@@ -105,7 +105,7 @@ export function StatusModal({ purok, onClose, onUpdate }) {
         color: "#000",
       });
 
-      onClose();
+      onClose(); // Close modal on success
     } catch (error) {
       console.error("Update error:", error);
       Swal.fire({
@@ -187,20 +187,23 @@ export function StatusModal({ purok, onClose, onUpdate }) {
         exit={{ scale: 0.9, opacity: 0 }}
         transition={{ type: "spring", stiffness: 120, damping: 15 }}
       >
-        {/* Header */}
-        <div className="flex justify-between items-center px-5 py-4 bg-red-900">
-          <h3 className="text-white text-lg font-semibold tracking-wide">
+        {/* === ✅ HEADER REDESIGNED === */}
+        {/* Changed from bg-red-900 to bg-white with a border */}
+        <div className="flex justify-between items-center px-5 py-4 bg-white border-b border-gray-200">
+          <h3 className="text-gray-900 text-lg font-semibold">
             Update Status
           </h3>
           <button
             onClick={onClose}
-            className="p-1 text-white hover:bg-white/20 rounded-full transition"
+            className="p-1 text-gray-400 hover:bg-gray-100 rounded-full transition"
           >
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>
+        {/* === END OF REDESIGN === */}
 
-        {/* Body */}
+
+        {/* Body (Unchanged) */}
         <div className="p-5 sm:p-6 space-y-6 bg-white overflow-y-auto max-h-[70vh]">
           {/* Purok Info */}
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
@@ -302,7 +305,7 @@ export function StatusModal({ purok, onClose, onUpdate }) {
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer (Unchanged) */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 px-5 py-4 border-t bg-gray-50">
           <button
             onClick={onClose}

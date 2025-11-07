@@ -3,15 +3,12 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
-// Removed Image import as it wasn't used directly here, but keep if needed elsewhere
 import { supabase } from "@/supabaseClient";
 import {
   CalendarDays,
   Recycle,
-  // Bell, // Removed if not used
   Leaf,
   LogIn,
-  // UserCog, // Removed if not used
   Truck,
   Mail,
   Lock,
@@ -21,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 
-// --- Onboarding Screens (Keep as is) ---
+// --- Onboarding Screens (Unchanged) ---
 const onboardingScreens = [
   {
     image: "/img/welcome.png",
@@ -53,7 +50,7 @@ interface LoginModalProps {
   error: string | null;
 }
 
-// --- Login Modal Component (Keep as is) ---
+// --- Login Modal Component (Unchanged) ---
 function LoginModal({
   isOpen,
   onClose,
@@ -180,7 +177,7 @@ const carouselImages = [
   "/img/CleanUp4.png",
 ];
 
-// --- AutoCarousel Component (Modified for Full-Screen Background) ---
+// --- AutoCarousel Component (Unchanged) ---
 function AutoCarousel() {
   const [index, setIndex] = useState(0);
 
@@ -234,20 +231,20 @@ export default function Login() {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
+  
+  const [error, setError] = useState<string | null>(null); 
+  
   const [showPassword, setShowPassword] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // --- Typing Animation (Keep as is) ---
+  // --- Typing Animation (Unchanged) ---
   const messages = ["Welcome!", "Hello There!", "Log In to Start!"];
   const [displayedText, setDisplayedText] = useState("");
   const [messageIndex, setMessageIndex] = useState(0);
   const [charIndex, setCharIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
 
-
-  
   useEffect(() => {
     if (!isMobile || !started) return;
     const speed = isDeleting ? 50 : 120;
@@ -271,131 +268,109 @@ export default function Login() {
     return () => clearTimeout(timeout);
   }, [charIndex, isDeleting, messageIndex, started, isMobile]);
 
- const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
-  setLoading(true);
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
 
-  try {
-    // Step 1: Sign in the user
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-    if (signInError) {
-      setError("Invalid email or password.");
+      if (signInError) {
+        setError(signInError.message || "Invalid email or password.");
+        return;
+      }
+
+      const user = signInData?.user;
+      if (!user) {
+        setError("Authentication failed. Please try again.");
+        return;
+      }
+
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("email, role")
+        .eq("email", user.email || email)
+        .single();
+
+      if (userError || !userData) {
+        setError("Account not recognized. Please contact your administrator.");
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.warn("Sign-out failed:", signOutErr);
+        }
+        return;
+      }
+
+      if (userData.role === "official" || userData.role === "admin") {
+        router.push("/");
+      } else if (userData.role === "collector") {
+        router.push("/collector");
+      } else {
+        router.push("/residents");
+      }
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(err.message || "An unexpected error occurred. Please try again.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const user = signInData.user;
-
-    // Step 2: Check if this email exists in the users table
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("email, role")
-      .eq("email", user.email)
-      .single();
-
-    if (userError || !userData) {
-      setError("Account not recognized. Please contact your administrator.");
-      await supabase.auth.signOut();
-      setLoading(false);
-      return;
-    }
-
-    // Step 3: Redirect based on role
-    if (userData.role === "official" || userData.role === "admin") {
-      router.push("/"); // official/admin dashboard
-    } else if (userData.role === "collector") {
-      router.push("/collector");
-    } else if (userData.role === "resident" || userData.role === "residents") {
-      router.push("/residents");
-    } else {
-      console.warn("⚠️ Unknown role:", userData.role);
-      router.push("/");
-    }
-  } catch (err: any) {
-    console.error("Login error:", err.message);
-    setError(err.message || "An unexpected error occurred. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // --- 🧭 PROFESSIONAL DESKTOP VIEW --- 🧭
   if (!isMobile && !started) {
     return (
       <div className="min-h-screen flex flex-col bg-gray-50">
-        {/* Navbar */}
-        <header className="w-full bg-white shadow-sm py-4 px-12 flex justify-between items-center fixed top-0 left-0 z-50">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-xl font-semibold text-[#b33b3b]">
-              Waste Collection Portal
-            </h1>
-          </div>
-          <button
-            onClick={() => setIsLoginModalOpen(true)}
-            className="bg-[#b33b3b] text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-[#c14a4a] transition duration-200"
-          >
-            Login
-          </button>
-        </header>
-
-        {/* === HERO SECTION (Bigger Text, Slower Fade-In) === */}
+        
+        {/* === HERO SECTION (MODIFIED TRANSITIONS) === */}
         <section className="relative flex flex-col items-center justify-center min-h-screen text-center text-white overflow-hidden">
           {/* The carousel now acts as a background */}
           <AutoCarousel />
 
           {/* Centered Text Content */}
           <div className="relative z-10 flex flex-col items-center p-4">
-            {/* Animate the main title with a slow fade */}
+            {/* Animate the main title with a smoother fade */}
             <motion.h2
-              className="text-5xl md:text-7xl font-extrabold text-white leading-tight mb-4 drop-shadow-lg" // Increased md size
-              initial={{ opacity: 0 }} // Start invisible
-              animate={{ opacity: 1 }} // Fade to visible
-              transition={{ duration: 2.5, ease: "easeOut" }} // Slower duration (2.5s)
+              className="text-5xl md:text-7xl font-extrabold text-white leading-tight mb-4 drop-shadow-lg"
+              initial={{ opacity: 0, y: 20 }} // Added y offset for subtle movement
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.8, ease: "easeOut" }} // Smoother duration
             >
               Barangay Tambacan
             </motion.h2>
 
-            {/* Animate the subtitle after the title animation */}
+            {/* Animate the subtitle after the title animation with smoother fade */}
             <motion.p
-              initial={{ opacity: 0 }} // Start invisible
-              animate={{ opacity: 1 }} // Fade to visible
-              transition={{ duration: 2.0, ease: "easeOut", delay: 1.5 }} // Slower duration (2.0s), adjusted delay
-              className="text-2xl md:text-4xl font-extrabold text-gray-200 drop-shadow-lg max-w-3xl" // Increased md size, max-w
+              initial={{ opacity: 0, y: 20 }} // Added y offset for subtle movement
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.5, ease: "easeOut", delay: 1.0 }} // Smoother duration, adjusted delay
+              className="text-2xl md:text-4xl font-extrabold text-gray-200 drop-shadow-lg max-w-3xl"
             >
               Waste Collection Management System
             </motion.p>
+
+            {/* NEW "GET STARTED" BUTTON (MODIFIED TRANSITION) */}
+            <motion.button
+              onClick={() => setIsLoginModalOpen(true)}
+              className="mt-12 bg-[#b33b3b] text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-[#c14a4a] transition duration-200 shadow-lg"
+              initial={{ opacity: 0, y: 30 }} // Added y offset
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.0, ease: "easeOut", delay: 2.0 }} // Smoother duration, adjusted delay
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Get Started
+            </motion.button>
           </div>
         </section>
         {/* === END OF HERO SECTION === */}
 
-       {/* Footer */}
-<footer className="bg-white text-red-800 py-6 px-12 text-center">
-  <div className="max-w-3xl mx-auto mb-4">
-    <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
-      <div className="flex items-center gap-2 group cursor-pointer">
-        <Phone className="w-4 h-4 text-red-800 group-hover:text-red-600 transition" />
-        <span className="text-sm font-medium group-hover:text-red-600 transition">
-          (0926) 321-5432
-        </span>
-      </div>
-      <div className="flex items-center gap-2 group cursor-pointer">
-        <Mail className="w-4 h-4 text-red-800 group-hover:text-red-600 transition" />
-        <span className="text-sm font-medium group-hover:text-red-600 transition">
-          wastesmart.tambacan@gmail.com
-        </span>
-      </div>
-    </div>
-  </div>
-  <p className="text-xs text-red-700">
-    © 2025 WasteSmart Official Portal | Barangay Tambacan
-  </p>
-</footer>
-
+        {/* === FOOTER REMOVED === */}
 
         {/* Login Modal */}
         <LoginModal
@@ -455,7 +430,6 @@ export default function Login() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -60 }}
               transition={{ duration: 0.45, ease: "easeInOut" }}
-              className="relative h-full flex flex-col justify-center"
             >
               <div className="bg-white py-6 px-5 flex flex-col items-center justify-between h-[90vh] mx-auto w-full relative overflow-hidden">
                 {/* Skip Button */}
@@ -645,22 +619,6 @@ export default function Login() {
                   </p>
                 </form>
               </div>
-              {/* Typing Cursor Animation */}
-              <style jsx>{`
-                .animate-blink-cursor {
-                  animation: blink 0.7s infinite;
-                  border-right: 4px solid #b33b3b;
-                }
-                @keyframes blink {
-                  0%,
-                  100% {
-                    border-color: transparent;
-                  }
-                  50% {
-                    border-color: #b33b3b;
-                  }
-                }
-              `}</style>
             </motion.div>
           )}
         </AnimatePresence>

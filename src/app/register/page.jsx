@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Listbox, Transition } from "@headlessui/react";
+import Swal from "sweetalert2"; // ✅ 1. IMPORT SWAL
 
 const purokOptions = Array.from({ length: 11 }, (_, i) => `Purok ${i + 1}`);
 
@@ -25,6 +26,7 @@ export default function Register() {
   const [form, setForm] = useState({
     email: "",
     password: "",
+    password_confirm: "",
     name: "",
     purok: "",
     mobile_number: "",
@@ -33,6 +35,7 @@ export default function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handlePurokChange = (value) => setForm({ ...form, purok: value });
   const handleInputChange = (e) =>
@@ -43,14 +46,31 @@ export default function Register() {
     setError("");
     setLoading(true);
 
-    // ✅ Validate purok
+    // --- Validations ---
+    if (!form.name.trim()) {
+      setError("Please enter your full name.");
+      setLoading(false);
+      return;
+    }
+
+    if (form.password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      setLoading(false);
+      return;
+    }
+
+    if (form.password !== form.password_confirm) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
+
     if (!form.purok) {
       setError("Please select your Purok.");
       setLoading(false);
       return;
     }
 
-    // ✅ Validate mobile
     const mobileRegex = /^09\d{9}$/;
     if (!mobileRegex.test(form.mobile_number)) {
       setError("Please enter a valid PH mobile number (e.g., 09123456789).");
@@ -59,7 +79,7 @@ export default function Register() {
     }
 
     try {
-      // ✅ Create the auth account
+      // Create the auth account
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
@@ -76,11 +96,19 @@ export default function Register() {
       if (signUpError) throw signUpError;
       const user = data.user;
       if (!user) throw new Error("User registration failed.");
+      
+      // ✅ 2. REPLACE ALERT WITH SWAL
+      Swal.fire({
+        title: "Registration Successful!",
+        text: "Please check your email to verify your account.",
+        icon: "success",
+        confirmButtonColor: "#b33b3b", // Match your theme
+        timer: 5000,
+        timerProgressBar: true,
+      });
 
-      alert(
-        "✅ Registration successful! Please check your email to verify your account."
-      );
       router.push("/login?verified=false&skipOnboarding=true");
+      
     } catch (err) {
       console.error("Registration error:", err.message || err);
       setError(
@@ -100,7 +128,6 @@ export default function Register() {
         className="relative bg-white text-gray-800 rounded-3xl shadow-2xl p-6 sm:p-10 w-full max-w-md mx-auto"
       >
         <div className="relative z-10 flex flex-col items-center">
-          <UserPlus size={50} className="text-[#d94f4f] drop-shadow-md mb-4" />
           <h1 className="text-2xl sm:text-3xl font-extrabold mb-1 text-center text-[#b33b3b]">
             Create an Account
           </h1>
@@ -227,7 +254,7 @@ export default function Register() {
               <input
                 type={showPassword ? "text" : "password"}
                 name="password"
-                placeholder="Password"
+                placeholder="Password (min. 6 characters)"
                 value={form.password}
                 onChange={handleInputChange}
                 required
@@ -241,6 +268,33 @@ export default function Register() {
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
               >
                 {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
+            {/* Confirm Password Field */}
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                name="password_confirm"
+                placeholder="Confirm Password"
+                value={form.password_confirm}
+                onChange={handleInputChange}
+                required
+                minLength={6}
+                className="w-full pl-11 pr-11 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
+                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
+              >
+                {showConfirmPassword ? (
                   <EyeOff className="w-5 h-5" />
                 ) : (
                   <Eye className="w-5 h-5" />

@@ -18,8 +18,8 @@ import {
   PackageCheck,
   Users,
   Recycle,
-  ChevronRight, // Added for card arrow
-  ArrowUp, // Added for percentage arrow
+  ChevronRight,
+  ArrowUp,
 } from "lucide-react";
 import {
   LineChart,
@@ -31,16 +31,17 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
 } from "recharts";
 import { supabase } from "@/supabaseClient";
 
-// Helper component for the gradient icon containers (Slightly adjusted rounding)
+// Helper component for the gradient icon containers
 const IconContainer = ({ accent, children }) => {
   const gradients = {
     "blue-500": "from-blue-500 to-blue-600",
     "green-500": "from-green-500 to-green-600",
-    "yellow-500": "from-yellow-500 to-orange-500", // Adjusted for better color
-    "purple-500": "from-purple-500 to-violet-600", // Adjusted for better color
+    "yellow-500": "from-yellow-500 to-orange-500",
+    "purple-500": "from-purple-500 to-violet-600",
     "indigo-500": "from-indigo-500 to-indigo-600",
     "red-500": "from-red-500 to-red-600",
   };
@@ -48,7 +49,7 @@ const IconContainer = ({ accent, children }) => {
     <div
       className={`bg-gradient-to-br ${
         gradients[accent] || "from-gray-500 to-gray-600"
-      } p-4 sm:p-5 rounded-2xl shadow-lg flex-shrink-0`} // Increased padding and rounding
+      } p-4 sm:p-5 rounded-2xl shadow-lg flex-shrink-0`}
     >
       {children}
     </div>
@@ -64,6 +65,7 @@ export default function Dashboard() {
   const [selectedPurok, setSelectedPurok] = useState("All");
   const [totalResidents, setTotalResidents] = useState(0);
   const [complianceData, setComplianceData] = useState([]);
+  const [overallCompliance, setOverallCompliance] = useState(0); // ← add this line
   const [completedCollectionsToday, setCompletedCollectionsToday] = useState(0);
   const [activities, setActivities] = useState([]);
   const [collectionEfficiency, setCollectionEfficiency] = useState(0);
@@ -72,7 +74,6 @@ export default function Dashboard() {
   const [activeRoutes, setActiveRoutes] = useState(0);
   const [citizenParticipation, setCitizenParticipation] = useState(0);
   const [totalReports, setTotalReports] = useState(0);
-  
 
   const typeStyles = {
     complete: {
@@ -107,8 +108,6 @@ export default function Dashboard() {
     },
   };
 
-  // --- ALL DATA FETCHING & REALTIME LOGIC IS UNCHANGED ---
-  // ... (All your useEffect hooks remain here) ...
   // 🧠 Fetch education
   useEffect(() => {
     const fetchEducationStats = async () => {
@@ -134,14 +133,14 @@ export default function Dashboard() {
         .eq("role", "resident")
         .not("purok", "is", null)
         .not("purok", "eq", "");
-  
+
       if (error) {
         console.error("❌ Error fetching residents:", error.message);
         return;
       }
-  
+
       console.log("✅ Residents fetched:", data);
-  
+
       if (data && data.length > 0) {
         setAllResidents(data);
         setPurokList([...new Set(data.map((r) => r.purok).filter(Boolean))].sort());
@@ -149,11 +148,10 @@ export default function Dashboard() {
         console.warn("⚠️ No residents found or missing purok");
       }
     };
-  
+
     fetchResidents();
   }, []);
-  
-  
+
   // ✅ Group purok data for chart or summary
   useEffect(() => {
     if (!Array.isArray(allResidents) || allResidents.length === 0) {
@@ -161,38 +159,114 @@ export default function Dashboard() {
       setPurokData([]);
       return;
     }
-  
+
     const filteredResidents =
       selectedPurok === "All"
         ? allResidents
         : allResidents.filter((r) => r.purok === selectedPurok);
-  
+
     setTotalResidents(filteredResidents.length);
-  
+
     const groupedByPurok = filteredResidents.reduce((acc, resident) => {
       const purokName = resident.purok?.trim() || "Unassigned";
       acc[purokName] = (acc[purokName] || 0) + 1;
       return acc;
     }, {});
-  
+
     const formattedData = Object.entries(groupedByPurok)
       .map(([purok, users]) => ({ name: purok, users }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  
+
     setPurokData(formattedData);
   }, [allResidents, selectedPurok]);
-  
 
   // 🧾 Compliance (static)
-  useEffect(() => {
-    setComplianceData([
-      { area: "Purok 1", rate: 75 },
-      { area: "Purok 2", rate: 82 },
-      { area: "Purok 3", rate: 90 },
-      { area: "Purok 4", rate: 85 },
-      { area: "Purok 5", rate: 95 },
-    ]);
-  }, []);
+ // 🧾 Compliance (dynamic by area)
+useEffect(() => {
+  const fetchComplianceRates = async () => {
+    try {
+      // 1) fetch residents (only residents with assigned purok)
+      const { data: residents, error: residentsError } = await supabase
+        .from("users")
+        .select("uid, purok")
+        .eq("role", "resident")
+        .not("purok", "is", null)
+        .not("purok", "eq", "");
+
+      if (residentsError) throw residentsError;
+      if (!residents || residents.length === 0) {
+        setComplianceData([]);
+        setOverallCompliance(0);
+        return;
+      }
+
+      // 2) fetch reports (we only need user_id to know who submitted)
+      const { data: reports, error: reportsError } = await supabase
+        .from("reports")
+        .select("user_id");
+
+      if (reportsError) throw reportsError;
+
+      // 3) group residents by purok
+      const purokGroups = residents.reduce((acc, r) => {
+        const name = r.purok?.toString().trim() || "Unassigned";
+        if (!acc[name]) acc[name] = { total: 0, submitted: 0 };
+        acc[name].total += 1;
+        return acc;
+      }, {});
+
+      // 4) count submitted per purok
+      const reportedUserIds = new Set((reports || []).map((r) => r.user_id));
+      residents.forEach((r) => {
+        const name = r.purok?.toString().trim() || "Unassigned";
+        if (reportedUserIds.has(r.uid) && purokGroups[name]) {
+          purokGroups[name].submitted += 1;
+        }
+      });
+
+      // 5) compute per-purok compliance array
+      const compliance = Object.entries(purokGroups).map(([purok, stats]) => ({
+        area: purok,
+        rate: stats.total > 0 ? parseFloat(((stats.submitted / stats.total) * 100).toFixed(1)) : 0,
+      }));
+
+      setComplianceData(compliance);
+
+      // 6) compute overall average compliance (0..100)
+      const avg =
+        compliance.length > 0
+          ? compliance.reduce((acc, cur) => acc + (parseFloat(cur.rate) || 0), 0) / compliance.length
+          : 0;
+
+      setOverallCompliance(parseFloat(avg.toFixed(1)));
+    } catch (error) {
+      console.error("❌ Error fetching compliance data:", error?.message ?? error);
+      setComplianceData([]);
+      setOverallCompliance(0);
+    }
+  };
+
+  // initial fetch
+  fetchComplianceRates();
+
+  // realtime listener: refresh when a new report is inserted
+  const channel = supabase
+    .channel("realtime-compliance")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "reports" },
+      () => {
+        fetchComplianceRates();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    // cleanup the channel on unmount
+    supabase.removeChannel(channel);
+  };
+}, []);
+
 
   // ✅ Active Routes (only ongoing) - Realtime
   useEffect(() => {
@@ -240,7 +314,7 @@ export default function Dashboard() {
         .from("schedules")
         .select("schedule_id, status, date, purok, updated_at")
         .order("updated_at", { ascending: false })
-        .limit(5); // Limit to 5 for a clean sidebar
+        .limit(5);
       if (error) {
         console.error("Error fetching schedules:", error);
         return;
@@ -296,7 +370,6 @@ export default function Dashboard() {
       setPendingReports(pending.length);
     };
     fetchReports();
-    // TODO: Add realtime listener for reports
   }, []);
 
   // ✅ Citizen Participation
@@ -305,7 +378,7 @@ export default function Dashboard() {
     const fetchReportsForParticipation = async () => {
       const { data: reports } = await supabase
         .from("reports")
-        .select("user_id"); // Assumes user_id is the resident
+        .select("user_id");
       if (!reports || reports.length === 0) {
         setCitizenParticipation(0);
         return;
@@ -365,8 +438,7 @@ export default function Dashboard() {
     fetchEfficiency();
   }, []);
 
-  // --- CARD DEFINITIONS UPDATED ---
-  // Restored all 6 cards
+  // --- CARD DEFINITIONS ---
   const cards = [
     {
       id: "collections",
@@ -380,16 +452,39 @@ export default function Dashboard() {
       showTrendIcon: true,
     },
     {
-      id: "compliance",
-      title: "Compliance Rate",
-      value: "4.7/5",
-      subtitle: "+5% this month",
-      accent: "green-500",
-      valueColor: "text-green-600",
-      icon: CheckCircle2,
-      subtitleColor: "text-green-500",
-      showTrendIcon: true,
-    },
+  id: "compliance",
+  title: "Compliance Rate",
+  value: `${overallCompliance}%`,
+  subtitle:
+    overallCompliance >= 90
+      ? "Excellent compliance"
+      : overallCompliance >= 70
+      ? "Good compliance"
+      : overallCompliance > 0
+      ? "Needs improvement"
+      : "No data yet",
+  accent:
+    overallCompliance >= 90
+      ? "green-500"
+      : overallCompliance >= 70
+      ? "yellow-500"
+      : "red-500",
+  valueColor:
+    overallCompliance >= 90
+      ? "text-green-600"
+      : overallCompliance >= 70
+      ? "text-yellow-600"
+      : "text-red-600",
+  icon: CheckCircle2,
+  subtitleColor:
+    overallCompliance >= 90
+      ? "text-green-500"
+      : overallCompliance >= 70
+      ? "text-yellow-500"
+      : "text-red-500",
+  showTrendIcon: false,
+},
+
     {
       id: "reports",
       title: "Pending Reports",
@@ -421,7 +516,7 @@ export default function Dashboard() {
       valueColor: "text-indigo-600",
       icon: BookOpen,
       subtitleColor: "text-indigo-600",
-      showTrendIcon: false, // Assuming no trend icon for this
+      showTrendIcon: false,
     },
     {
       id: "archived",
@@ -432,8 +527,14 @@ export default function Dashboard() {
       valueColor: "text-red-600",
       icon: Archive,
       subtitleColor: "text-red-600",
-      showTrendIcon: false, // Assuming no trend icon for this
+      showTrendIcon: false,
     },
+  ];
+
+  // --- PUROK COLORS ---
+  const PUROK_COLORS = [
+    "#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#83a6ed", "#a4de6c",
+    "#d0ed57", "#ffc0cb", "#bada55", "#008080", "#ff69b4", "#f0e68c",
   ];
 
   // --- UI Render ---
@@ -451,15 +552,14 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* --- Top Cards: NEW DESIGN APPLIED --- */}
-        {/* Kept lg:grid-cols-6 to fit all 6 cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 relative z-10">
           {cards.map((card) => {
-            const accentBg = `bg-${card.accent.split("-")[0]}-500`; // e.g., bg-blue-500
+            const accentBg = `bg-${card.accent.split("-")[0]}-500`;
             return (
               <motion.div
                 key={card.id}
                 whileTap={{ scale: 0.98 }}
-                className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
+                className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
               >
                 {/* Background Blob */}
                 <div
@@ -486,14 +586,14 @@ export default function Dashboard() {
                       {!card.showTrendIcon &&
                         card.id === "reports" &&
                         card.value > 0 && (
-                          <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full mr-1.5"></div> // Dot for pending reports
+                          <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full mr-1.5"></div>
                         )}
                       {!card.showTrendIcon && card.id === "routes" && (
                         <div
                           className={`w-1.5 h-1.5 ${
                             activeRoutes > 0 ? "bg-green-500" : "bg-gray-400"
                           } rounded-full mr-1.5`}
-                        ></div> // Dot for active routes
+                        ></div>
                       )}
                       <span>{card.subtitle}</span>
                     </div>
@@ -512,16 +612,16 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* --- Main Content Area: APPLYING NEW CARD STYLE to 2x2 LAYOUT --- */}
+        {/* --- Main Content Area --- */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 relative z-10">
           {/* --- Cell 1: Residents per Purok --- */}
           <motion.div
             whileTap={{ scale: 0.98 }}
-            className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden" // Applied new style
+            className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
           >
             {/* Background Blob */}
             <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-white rounded-full opacity-10 blur-2xl pointer-events-none"></div>
-            <div className="relative z-10"> {/* Content needs higher z-index */}
+            <div className="relative z-10">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
                 <h3 className="text-lg sm:text-xl font-bold gradient-text flex items-center gap-2">
                   <BarChart3 className="w-5 h-5" />
@@ -534,7 +634,7 @@ export default function Dashboard() {
                   <select
                     value={selectedPurok}
                     onChange={(e) => setSelectedPurok(e.target.value)}
-                    className="border-slate-300 rounded-md shadow-sm p-2 text-sm focus:ring-green-500 focus:border-green-500 bg-white bg-opacity-80 backdrop-blur-sm" // Added slight transparency
+                    className="border-slate-300 rounded-md shadow-sm p-2 text-sm focus:ring-green-500 focus:border-green-500 bg-white bg-opacity-80 backdrop-blur-sm"
                   >
                     <option value="All">All Puroks</option>
                     {purokList.map((purok) => (
@@ -551,7 +651,6 @@ export default function Dashboard() {
                   {totalResidents}
                 </span>
               </p>
-              {/* Chart container adjusted for new card style */}
               <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={purokData}>
@@ -570,15 +669,16 @@ export default function Dashboard() {
                     />
                     <Bar
                       dataKey="users"
-                      fill="url(#colorUvMain)"
                       radius={[4, 4, 0, 0]}
-                    />
-                     <defs>
-                      <linearGradient id="colorUvMain" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#667eea" stopOpacity={0.9} />
-                        <stop offset="95%" stopColor="#764ba2" stopOpacity={0.9} />
-                      </linearGradient>
-                    </defs>
+                      maxBarSize={60}
+                    >
+                      {purokData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={PUROK_COLORS[index % PUROK_COLORS.length]}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -588,22 +688,62 @@ export default function Dashboard() {
           {/* --- Cell 2: Compliance Rate --- */}
           <motion.div
             whileTap={{ scale: 0.98 }}
-            className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden" // Applied new style
+            className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
           >
-             {/* Background Blob */}
-             <div className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2  rounded-full opacity-10 blur-2xl pointer-events-none"></div>
-             <div className="relative z-10">
-                <h3 className="text-lg sm:text-xl font-bold gradient-text mb-4 flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5" />
-                  Compliance Rates by Area
-                </h3>
-                <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={complianceData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
-                      <XAxis dataKey="area" />
-                      <YAxis />
-                      <Tooltip
+            <div className="absolute -bottom-1/4 -left-1/4 w-1/2 h-1/2 rounded-full opacity-10 blur-2xl pointer-events-none"></div>
+            <div className="relative z-10">
+              <h3 className="text-lg sm:text-xl font-bold gradient-text mb-4 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                Compliance Rates by Area
+              </h3>
+              <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={complianceData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
+                    <XAxis dataKey="area" />
+                    <YAxis />
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: "0.5rem",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        border: "none",
+                        backgroundColor: "rgba(255, 255, 255, 0.9)",
+                        backdropFilter: "blur(5px)",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="rate"
+                      stroke="#16a34a"
+                      strokeWidth={3}
+                      dot={{ r: 5, fill: "#16a34a" }}
+                      activeDot={{ r: 7 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* --- Cell 3: Collection Efficiency --- */}
+          <motion.div
+            whileTap={{ scale: 0.98 }}
+            className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
+          >
+            <div className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-white rounded-full opacity-10 blur-2xl pointer-events-none"></div>
+            <div className="relative z-10">
+              <h3 className="text-lg sm:text-xl font-bold gradient-text mb-4 flex items-center gap-2">
+                <LineChartIcon className="w-5 h-5" />
+                Collection Efficiency (Weekly)
+              </h3>
+              <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={efficiencyData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
+                    <XAxis dataKey="day" />
+                    <YAxis unit="%" />
+                    <Tooltip
+                      formatter={(value) => [`${value}%`, "Efficiency"]}
                         contentStyle={{
                           borderRadius: "0.5rem",
                           boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
@@ -611,71 +751,29 @@ export default function Dashboard() {
                           backgroundColor: "rgba(255, 255, 255, 0.9)",
                           backdropFilter: "blur(5px)",
                         }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="rate"
-                        stroke="#16a34a"
-                        strokeWidth={3}
-                        dot={{ r: 5, fill: "#16a34a" }}
-                        activeDot={{ r: 7 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-             </div>
-          </motion.div>
-
-          {/* --- Cell 3: Collection Efficiency --- */}
-          <motion.div
-            whileTap={{ scale: 0.98 }}
-            className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden" // Applied new style
-          >
-             {/* Background Blob */}
-             <div className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-white rounded-full opacity-10 blur-2xl pointer-events-none"></div>
-             <div className="relative z-10">
-                <h3 className="text-lg sm:text-xl font-bold gradient-text mb-4 flex items-center gap-2">
-                  <LineChartIcon className="w-5 h-5" />
-                  Collection Efficiency (Weekly)
-                </h3>
-                <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={efficiencyData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
-                      <XAxis dataKey="day" />
-                      <YAxis unit="%" />
-                      <Tooltip
-                        formatter={(value) => [`${value}%`, "Efficiency"]}
-                         contentStyle={{
-                          borderRadius: "0.5rem",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                          border: "none",
-                          backgroundColor: "rgba(255, 255, 255, 0.9)",
-                          backdropFilter: "blur(5px)",
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="efficiency"
-                        stroke="#16a34a"
-                        strokeWidth={3}
-                        dot={{ r: 5, fill: "#16a34a" }}
-                        activeDot={{ r: 7 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-             </div>
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="efficiency"
+                      stroke="#16a34a"
+                      strokeWidth={3}
+                      dot={{ r: 5, fill: "#16a34a" }}
+                      activeDot={{ r: 7 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </motion.div>
 
           {/* --- Cell 4: Recent Activities & Detailed Analytics (Stacked) --- */}
           <div className="space-y-6 lg:space-y-8">
-            {/* --- Recent Activities --- */}
+            
+            {/* --- Recent Activities (Restored Design) --- */}
             <motion.div
               whileTap={{ scale: 0.98 }}
-              className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden" // Applied new style
+              className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
             >
-               {/* Background Blob */}
               <div className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 bg-white rounded-full opacity-10 blur-2xl pointer-events-none"></div>
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-4">
@@ -684,7 +782,7 @@ export default function Dashboard() {
                   </h3>
                   <div className="bg-gradient-to-r from-blue-500 to-purple-600 w-2.5 h-2.5 rounded-full pulse-dot"></div>
                 </div>
-                <div className="space-y-3 overflow-y-auto max-h-[180px] sm:max-h-[220px] pr-1"> {/* Adjusted height */}
+                <div className="space-y-3 overflow-y-auto max-h-[180px] sm:max-h-[220px] pr-1">
                   {activities.length === 0 ? (
                     <p className="text-gray-500 text-sm">No recent activities</p>
                   ) : (
@@ -697,17 +795,15 @@ export default function Dashboard() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3 }}
-                          className={`activity-item flex items-center space-x-3 p-3 bg-gradient-to-r ${style.bg} rounded-lg border-l-4 bg-opacity-80 backdrop-blur-sm`} // Added slight transparency
+                          className={`flex items-start p-3 rounded-xl border ${style.bg} bg-opacity-70 backdrop-blur-sm`}
                         >
-                          <Icon
-                            className={`w-5 h-5 text-${style.color}-600 animate-bounce flex-shrink-0`}
-                          />
-                          <div className="flex-1">
-                            <p className="font-semibold text-gray-800 text-sm">
+                          <Icon className={`w-4 h-4 text-${style.color}-600 mr-3 mt-1 flex-shrink-0`} />
+                          <div className="flex-grow">
+                            <p className="text-sm font-medium text-slate-800 leading-tight">
                               {activity.action}
                             </p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              {new Date(activity.created_at).toLocaleTimeString()}
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {new Date(activity.created_at).toLocaleString()}
                             </p>
                           </div>
                         </motion.div>
@@ -718,55 +814,44 @@ export default function Dashboard() {
               </div>
             </motion.div>
 
-            {/* --- Detailed Analytics --- */}
-            <motion.div
-              whileTap={{ scale: 0.98 }}
-              className=" hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden" // Applied new style
-            >
-               {/* Background Blob */}
-              <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-indigo-500 rounded-full opacity-10 blur-2xl pointer-events-none"></div>
-              <div className="relative z-10">
-                  <h3 className="text-base sm:text-lg font-bold text-slate-700 mb-4">
-                    Detailed Analytics
-                  </h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    {/* Item 1: Efficiency */}
-                    <div className="p-3 bg-green-50 bg-opacity-80 backdrop-blur-sm rounded-xl text-center">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-green-100 text-green-700 mb-1 mx-auto">
-                        <PackageCheck className="w-5 h-5" />
-                      </div>
-                      <h4 className="font-semibold text-slate-700 text-xs leading-tight mb-0.5">
-                        Collection Efficiency
-                      </h4>
-                      <p className="text-xl font-bold text-green-700">
-                        {collectionEfficiency}%
-                      </p>
-                    </div>
-                    {/* Item 2: Participation */}
-                    <div className="p-3 bg-amber-50 bg-opacity-80 backdrop-blur-sm rounded-xl text-center">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-100 text-amber-700 mb-1 mx-auto">
-                        <Users className="w-5 h-5" />
-                      </div>
-                      <h4 className="font-semibold text-slate-700 text-xs leading-tight mb-0.5">
-                        Citizen Participation
-                      </h4>
-                      <p className="text-xl font-bold text-amber-700">
-                        {citizenParticipation}%
-                      </p>
-                    </div>
-                    {/* Item 3: Waste Reduction */}
-                    <div className="p-3 bg-blue-50 bg-opacity-80 backdrop-blur-sm rounded-xl text-center">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 text-blue-700 mb-1 mx-auto">
-                        <Recycle className="w-5 h-5" />
-                      </div>
-                      <h4 className="font-semibold text-slate-700 text-xs leading-tight mb-0.5">
-                        Waste Reduction
-                      </h4>
-                      <p className="text-xl font-bold text-blue-700">50%</p> {/* Example Value */}
-                    </div>
+            {/* --- Mini Analytics Card (New Design) --- */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Stat 1 */}
+              <motion.div
+                whileTap={{ scale: 0.98 }}
+                className="bg-gradient-to-br from-yellow-50 to-orange-100 p-4 rounded-2xl shadow-sm border border-orange-200"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-white rounded-full shadow-md">
+                    <Users className="w-5 h-5 text-orange-600" />
                   </div>
-              </div>
-            </motion.div>
+                  <p className="text-sm font-semibold text-orange-800">
+                    Citizen<br/>Participation
+                  </p>
+                </div>
+                <p className="text-4xl font-bold text-orange-700 text-right mt-2">
+                  {citizenParticipation}%
+                </p>
+              </motion.div>
+              
+              {/* Stat 2 */}
+              <motion.div
+                whileTap={{ scale: 0.98 }}
+                className="bg-gradient-to-br from-green-50 to-emerald-100 p-4 rounded-2xl shadow-sm border border-green-200"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-white rounded-full shadow-md">
+                    <Recycle className="w-5 h-5 text-green-600" />
+                  </div>
+                  <p className="text-sm font-semibold text-green-800">
+                    Overall<br/>Efficiency
+                  </p>
+                </div>
+                <p className="text-4xl font-bold text-green-700 text-right mt-2">
+                  {collectionEfficiency}%
+                </p>
+              </motion.div>
+            </div>
           </div>
         </div>
       </div>
