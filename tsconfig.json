@@ -43,7 +43,7 @@
     ".next/dev/types/**/*.ts",
     ".next\\dev/types/**/*.ts",
     ".next\\dev/types/**/*.ts"
-, "src/app/login/page.jsx", "src/app/register/page.jsx"  ],
+, "src/app/login/page.jsx", "src/app/register/page.jsx", "src/app/collector/page.jsx"  ],
   "exclude": [
     "node_modules"
   ]

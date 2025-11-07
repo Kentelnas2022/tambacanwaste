@@ -5,36 +5,33 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/supabaseClient";
 import Header from "../components-collector/Header";
 import Tabs from "../components-collector/Tabs";
-import Schedule from "../components-collector/Schedule";
 
-export default function CollectorDashboard() {
+export default function CollectorDashboardClient() {
   const router = useRouter();
-  const [isAuthorized, setIsAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const verifyCollector = async () => {
       try {
-        // ✅ Get active session
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("Error fetching session:", error.message);
-          router.replace("/login");
-          return;
-        }
+        // Get current session
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
 
+        const session = data?.session;
         const user = session?.user;
+
         if (!user) {
-          console.warn("No active user session found. Redirecting...");
+          console.warn("No active session found. Redirecting...");
           router.replace("/login");
           return;
         }
 
-        // ✅ Fetch user info from unified 'users' table (case-insensitive)
+        // Fetch user info from Supabase "users" table
         const { data: userData, error: userError } = await supabase
           .from("users")
           .select("email, role")
-          .ilike("email", user.email)
+          .eq("email", user.email)
           .single();
 
         if (userError || !userData) {
@@ -44,26 +41,26 @@ export default function CollectorDashboard() {
           return;
         }
 
-        // ✅ Allow only collectors
-        if (userData.role === "collector") {
-          setIsAuthorized(true);
-        } else {
-          console.warn(`Unauthorized role (${userData.role}), redirecting...`);
+        // Only allow "collector" role
+        if (userData.role !== "collector") {
+          console.warn(`Unauthorized role: ${userData.role}`);
           await supabase.auth.signOut();
           router.replace("/login");
+          return;
         }
-      } catch (err) {
-        console.error("Error during authentication:", err);
+
+        setAuthorized(true);
+      } catch (err: any) {
+        console.error("Error during authentication:", err.message);
         router.replace("/login");
       } finally {
         setLoading(false);
       }
     };
 
-    checkAuth();
+    verifyCollector();
   }, [router]);
 
-  // ⏳ Loading Screen
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -72,17 +69,14 @@ export default function CollectorDashboard() {
     );
   }
 
-  // 🚫 Unauthorized users see nothing while redirecting
-  if (!isAuthorized) return null;
+  if (!authorized) return null;
 
-  // ✅ Authorized collector view
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
       <Header />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-6">
         <Tabs />
-        <Schedule />
-      </div>
+      </main>
     </div>
   );
 }
