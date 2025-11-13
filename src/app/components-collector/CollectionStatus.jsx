@@ -376,33 +376,55 @@ export default function CollectionStatus() {
 
   // Fetch schedules
   useEffect(() => {
-    const fetchSchedules = async () => {
-      const { data, error } = await supabase.from("schedules").select("*").order("date", { ascending: true });
-      if (error) {
-        console.error("Error fetching schedules:", error);
-        return;
-      }
+  const fetchSchedules = async () => {
+    // Fetch only active (non-archived) schedules
+    const { data, error } = await supabase
+      .from("schedules")
+      .select("*")
+      .order("date", { ascending: true });
 
-      const mapped = data.map((r, index) => {
-        const parsedRoute = parseCoordinates(r.route_points);
-        return {
-          id: r.schedule_id,
-          purok: r.purok || `Purok ${index + 1}`,
-          routeType: r.type || "Unknown",
-          routePlan: r.plan || "Not set",
-          scheduleDay: r.day || "—",
-          scheduleDate: r.date || "—",
-          scheduleStart: r.start_time || null,
-          scheduleEnd: r.end_time || null,
-          status: (r.status || "not-started").toLowerCase(),
-          wasteType: r.waste_type || "General",
-          coordinates: parsedRoute,
-        };
-      });
-      setSchedules(mapped);
-    };
-    fetchSchedules();
-  }, []);
+    if (error) {
+      console.error("Error fetching schedules:", error);
+      return;
+    }
+
+    // Optional: fetch archived schedule_ids to ensure no duplicates appear
+    const { data: archivedData, error: archivedError } = await supabase
+      .from("collection_archive")
+      .select("schedule_id");
+
+    if (archivedError) {
+      console.error("Error fetching archives:", archivedError);
+    }
+
+    const archivedIds = new Set((archivedData || []).map(a => a.schedule_id));
+
+    // Filter out any schedule that was already archived
+    const filtered = (data || []).filter(r => !archivedIds.has(r.schedule_id));
+
+    const mapped = filtered.map((r, index) => {
+      const parsedRoute = parseCoordinates(r.route_points);
+      return {
+        id: r.schedule_id,
+        purok: r.purok || `Purok ${index + 1}`,
+        routeType: r.type || "Unknown",
+        routePlan: r.plan || "Not set",
+        scheduleDay: r.day || "—",
+        scheduleDate: r.date || "—",
+        scheduleStart: r.start_time || null,
+        scheduleEnd: r.end_time || null,
+        status: (r.status || "not-started").toLowerCase(),
+        wasteType: r.waste_type || "General",
+        coordinates: parsedRoute,
+      };
+    });
+
+    setSchedules(mapped);
+  };
+
+  fetchSchedules();
+}, []);
+
 
   const getStatusClasses = (status) => {
     const styles = {

@@ -12,7 +12,7 @@
     "@heroicons/react": "^2.2.0",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.75.1",
     "@vonage/server-sdk": "^3.25.1",
     "chart.js": "^4.5.0",

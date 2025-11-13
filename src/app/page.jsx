@@ -3,14 +3,19 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 
 import Header from "./components-official/Header";
 import NavigationTabs from "./components-official/NavigationTabs";
 import Dashboard from "./components-official/Dashboard";
-import Schedule from "./components-official/Schedule";
 import SMS from "./components-official/SMS";
 import Reports from "./components-official/Reports";
 import Education from "./components-official/Education";
+
+// ✅ Dynamically import Schedule to disable SSR (fixes "window is not defined")
+const Schedule = dynamic(() => import("./components-official/Schedule"), {
+  ssr: false,
+});
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("Dashboard");
@@ -21,8 +26,11 @@ export default function Home() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // ✅ Get active session
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
         if (error) {
           console.error("Error fetching session:", error.message);
           router.replace("/login");
@@ -35,7 +43,6 @@ export default function Home() {
           return;
         }
 
-        // ✅ Check if the logged-in user exists in the "users" table
         const { data: userRecord, error: userError } = await supabase
           .from("users")
           .select("email, role")
@@ -49,7 +56,6 @@ export default function Home() {
           return;
         }
 
-        // ✅ Allow access if their role is "official" or "admin"
         if (["official", "admin"].includes(userRecord.role)) {
           setIsAuthorized(true);
           setLoading(false);
@@ -83,7 +89,7 @@ export default function Home() {
       <NavigationTabs activeTab={activeTab} onTabChange={setActiveTab} />
       <main className="container mx-auto px-4 py-8 space-y-8">
         {activeTab === "Dashboard" && <Dashboard />}
-        {activeTab === "Schedule" && <Schedule />}
+        {activeTab === "Schedule" && <Schedule />} {/* ✅ No SSR for this */}
         {activeTab === "SMS Alerts" && <SMS />}
         {activeTab === "Reports" && <Reports />}
         {activeTab === "Education" && <Education />}

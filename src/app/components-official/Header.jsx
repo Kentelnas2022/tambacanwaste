@@ -77,35 +77,53 @@ export default function Header() {
 
   // 🧾 Add User function (Unchanged)
   const handleCreateAccount = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!form.role) {
-      Swal.fire({
-        icon: "warning",
-        title: "Please select a role",
-      });
-      return;
+  if (!form.role) {
+    Swal.fire({
+      icon: "warning",
+      title: "Please select a role",
+    });
+    return;
+  }
+
+  try {
+    // ✅ Step 0: Check if email already exists in users table
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("uid")
+      .eq("email", form.email)
+      .maybeSingle();
+
+    if (existingUser) {
+      throw new Error("This email already exists in system.");
     }
 
-    try {
-      // ✅ Step 1: Create auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-  email: form.email,
-  password: form.password,
-  options: {
-    data: {
-      role: form.role,   // ✅ This is the SECRET ingredient
-    },
-  },
-});
+    // ✅ Step 1: Create user in Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: form.email,
+      password: form.password,
+      options: {
+        data: {
+          role: form.role,
+        },
+      },
+    });
 
+    if (authError) throw authError;
 
-      if (authError) throw authError;
+    const uid = authData?.user?.id;
+    if (!uid) throw new Error("Failed to retrieve user ID from auth.");
 
-      const uid = authData?.user?.id;
-      if (!uid) throw new Error("User ID not returned after sign up.");
+    // ✅ Step 2: Check again if the row already exists (due to triggers)
+    const { data: autoInserted } = await supabase
+      .from("users")
+      .select("*")
+      .eq("uid", uid)
+      .maybeSingle();
 
-      // ✅ Step 2: Insert user data into your 'users' table
+    if (!autoInserted) {
+      // ✅ Step 3: Official INSERT (only if no auto insert happened)
       const { error: insertError } = await supabase.from("users").insert([
         {
           uid,
@@ -119,36 +137,35 @@ export default function Header() {
       ]);
 
       if (insertError) throw insertError;
-
-      // ✅ Step 3: Show success alert
-      Swal.fire({
-        icon: "success",
-        title: `${
-          form.role.charAt(0).toUpperCase() + form.role.slice(1)
-        } account created successfully!`,
-        showConfirmButton: false,
-        timer: 1800,
-      });
-
-      // ✅ Step 4: Reset form and close modal
-      setShowModal(false);
-      setForm({
-        name: "",
-        email: "",
-        password: "",
-        purok: "",
-        mobile_number: "",
-        role: "",
-      });
-    } catch (error) {
-      console.error("Error creating account:", error);
-      Swal.fire({
-        icon: "error",
-        title: "Failed to create account",
-        text: error.message,
-      });
     }
-  };
+
+    Swal.fire({
+      icon: "success",
+      title: `${
+        form.role.charAt(0).toUpperCase() + form.role.slice(1)
+      } account created successfully!`,
+      showConfirmButton: false,
+      timer: 1800,
+    });
+
+    setShowModal(false);
+    setForm({
+      name: "",
+      email: "",
+      password: "",
+      purok: "",
+      mobile_number: "",
+      role: "",
+    });
+  } catch (error) {
+    console.error("Error creating account:", error);
+    Swal.fire({
+      icon: "error",
+      title: "Failed to create account",
+      text: error.message,
+    });
+  }
+};
 
   return (
     <header className="relative overflow-visible shadow-lg w-full z-[100]">

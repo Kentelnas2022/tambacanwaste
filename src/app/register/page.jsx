@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Listbox, Transition } from "@headlessui/react";
-import Swal from "sweetalert2"; // ✅ 1. IMPORT SWAL
+import Swal from "sweetalert2";
 
 const purokOptions = Array.from({ length: 11 }, (_, i) => `Purok ${i + 1}`);
 
@@ -37,9 +37,10 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handlePurokChange = (value) => setForm({ ...form, purok: value });
   const handleInputChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handlePurokChange = (value) => setForm({ ...form, purok: value });
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -52,25 +53,21 @@ export default function Register() {
       setLoading(false);
       return;
     }
-
     if (form.password.length < 6) {
       setError("Password must be at least 6 characters long.");
       setLoading(false);
       return;
     }
-
     if (form.password !== form.password_confirm) {
       setError("Passwords do not match.");
       setLoading(false);
       return;
     }
-
     if (!form.purok) {
       setError("Please select your Purok.");
       setLoading(false);
       return;
     }
-
     const mobileRegex = /^09\d{9}$/;
     if (!mobileRegex.test(form.mobile_number)) {
       setError("Please enter a valid PH mobile number (e.g., 09123456789).");
@@ -79,7 +76,6 @@ export default function Register() {
     }
 
     try {
-      // Create the auth account
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
@@ -88,32 +84,28 @@ export default function Register() {
             name: form.name,
             purok: form.purok,
             mobile_number: form.mobile_number,
+            role: "resident",
           },
           emailRedirectTo: `${window.location.origin}/login?skipOnboarding=true`,
         },
       });
 
       if (signUpError) throw signUpError;
-      const user = data.user;
-      if (!user) throw new Error("User registration failed.");
-      
-      // ✅ 2. REPLACE ALERT WITH SWAL
-      Swal.fire({
+      if (!data?.user) throw new Error("User registration failed.");
+
+      await Swal.fire({
         title: "Registration Successful!",
         text: "Please check your email to verify your account.",
         icon: "success",
-        confirmButtonColor: "#b33b3b", // Match your theme
+        confirmButtonColor: "#b33b3b",
         timer: 5000,
         timerProgressBar: true,
       });
 
       router.push("/login?verified=false&skipOnboarding=true");
-      
     } catch (err) {
       console.error("Registration error:", err.message || err);
-      setError(
-        err.message || "An unexpected error occurred during registration."
-      );
+      setError(err.message || "An unexpected error occurred during registration.");
     } finally {
       setLoading(false);
     }
@@ -147,22 +139,18 @@ export default function Register() {
                 onChange={handleInputChange}
                 required
                 className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
-                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+                  focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
             </div>
 
-            {/* Purok Selector */}
+            {/* Purok */}
             <div className="relative">
               <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
               <Listbox value={form.purok} onChange={handlePurokChange}>
                 <div className="relative">
                   <Listbox.Button className="relative w-full cursor-default rounded-xl bg-gray-100 py-3 pl-11 pr-10 text-left text-gray-800 
                     focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d94f4f]/60 focus-visible:bg-white text-sm sm:text-base">
-                    <span
-                      className={`block truncate ${
-                        form.purok ? "text-gray-800" : "text-gray-400"
-                      }`}
-                    >
+                    <span className={`${form.purok ? "text-gray-800" : "text-gray-400"} block truncate`}>
                       {form.purok || "Select Purok"}
                     </span>
                     <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
@@ -182,19 +170,13 @@ export default function Register() {
                           value={purok}
                           className={({ active }) =>
                             `relative cursor-default select-none py-2 pl-10 pr-4 ${
-                              active
-                                ? "bg-[#fceded] text-[#b33b3b]"
-                                : "text-gray-900"
+                              active ? "bg-[#fceded] text-[#b33b3b]" : "text-gray-900"
                             }`
                           }
                         >
                           {({ selected }) => (
                             <>
-                              <span
-                                className={`block truncate ${
-                                  selected ? "font-medium" : "font-normal"
-                                }`}
-                              >
+                              <span className={`block truncate ${selected ? "font-medium" : "font-normal"}`}>
                                 {purok}
                               </span>
                               {selected && (
@@ -221,15 +203,12 @@ export default function Register() {
                 placeholder="Mobile Number (09...)"
                 value={form.mobile_number}
                 onChange={(e) =>
-                  setForm({
-                    ...form,
-                    mobile_number: e.target.value.replace(/\D/g, ""),
-                  })
+                  setForm({ ...form, mobile_number: e.target.value.replace(/\D/g, "") })
                 }
                 required
                 maxLength={11}
                 className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
-                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+                  focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
             </div>
 
@@ -244,7 +223,7 @@ export default function Register() {
                 onChange={handleInputChange}
                 required
                 className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
-                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+                  focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
             </div>
 
@@ -260,22 +239,18 @@ export default function Register() {
                 required
                 minLength={6}
                 className="w-full pl-11 pr-11 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
-                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+                  focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
               >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
 
-            {/* Confirm Password Field */}
+            {/* Confirm Password */}
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
               <input
@@ -287,29 +262,21 @@ export default function Register() {
                 required
                 minLength={6}
                 className="w-full pl-11 pr-11 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 
-                focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
+                  focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition text-sm sm:text-base"
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
               >
-                {showConfirmPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
+                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
 
             {/* Error Message */}
-            {error && (
-              <p className="text-red-500 text-xs sm:text-sm text-center pt-1">
-                {error}
-              </p>
-            )}
+            {error && <p className="text-red-500 text-xs sm:text-sm text-center pt-1">{error}</p>}
 
-            {/* Submit */}
+            {/* Submit Button */}
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
@@ -325,14 +292,7 @@ export default function Register() {
                     fill="none"
                     viewBox="0 0 24 24"
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path
                       className="opacity-75"
                       fill="currentColor"
