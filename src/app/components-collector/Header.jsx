@@ -41,6 +41,12 @@ export default function Header() {
     }
   };
 
+  const handleLogs = () => {
+    // Navigate to the activity logs page
+    router.push("/logs"); // Assuming '/logs' is your route
+    setIsDropdownOpen(false); // Close dropdown on navigation
+  };
+
   return (
     <header className="bg-red-900 border-b border-red-800 shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -53,25 +59,35 @@ export default function Header() {
 
         {/* Right Section */}
         <div className="flex items-center gap-3 sm:gap-4">
-    
-          
           {/* Date */}
           <div className="hidden sm:flex items-center gap-1 text-gray-100 font-mono">
             <FaClock />
             <span className="text-sm">{currentDate}</span>
           </div>
-          
+
           {/* Profile */}
           <div className="relative">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center justify-center w-9 h-9 bg-white/10 border border-white/20 rounded-full shadow-sm hover:bg-white/20 focus:outline-none transition-all"
+              className="flex items-center justify-center hover:bg-white/20 focus:outline-none transition-all"
             >
               <HiOutlineUserCircle className="text-2xl text-white" />
             </button>
 
             {isDropdownOpen && (
               <div className="absolute right-0 mt-2 w-40 bg-white shadow-lg rounded-md border border-gray-200 z-20 animate-fadeIn">
+                {/* Activity Logs Button */}
+                <button
+                  onClick={handleLogs}
+                  className="block w-full px-4 py-2 text-sm text-gray-800 hover:bg-gray-100 text-left"
+                >
+                  Activity Logs
+                </button>
+
+                {/* Divider */}
+                <div className="border-t border-gray-100"></div>
+
+                {/* Logout Button */}
                 <button
                   onClick={handleLogout}
                   className="block w-full px-4 py-2 text-sm text-gray-800 hover:bg-gray-100 text-left"

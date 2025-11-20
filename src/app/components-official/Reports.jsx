@@ -20,7 +20,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 
-// --- MediaPreview Component (Unchanged, as you requested) ---
+// --- MediaPreview Component (Unchanged) ---
 const MediaPreview = ({ url }) => {
   let fileType = "other";
   let extension = "";
@@ -326,7 +326,7 @@ export default function Reports() {
   const [responseModalReport, setResponseModalReport] = useState(null);
   const [viewModalReport, setViewModalReport] = useState(null);
 
-  // --- NEW: State for sorting ---
+  // --- State for sorting ---
   const [sortMode, setSortMode] = useState("newest");
 
   // --- (All your data fetching, hooks, and logic handlers are unchanged) ---
@@ -339,7 +339,6 @@ export default function Reports() {
     };
     fetchUser();
     
-    // ✅ ADDED: This keeps the user session fresh automatically.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -375,9 +374,9 @@ export default function Reports() {
   }, [user]);
 
   //
-  // --- ✅ MODIFICATION #1: normalizeReport is now async ---
+  // --- ✅ FIXED FUNCTION #1: normalizeReport (now synchronous) ---
   //
-  const normalizeReport = async (r) => {
+  const normalizeReport = (r) => {
     let file_urls_from_db = r.file_urls;
     if (!file_urls_from_db) file_urls_from_db = [];
     if (typeof file_urls_from_db === "string") {
@@ -388,51 +387,44 @@ export default function Reports() {
       }
     }
 
-    // This creates NEW signed URLs from the (likely expired) ones in the database.
-    const fresh_signed_urls = await Promise.all(
-      file_urls_from_db.map(async (expiredUrl) => {
-        if (!expiredUrl || typeof expiredUrl !== 'string') return null;
+    // This converts the expired URLs into public URLs
+    const public_urls = file_urls_from_db.map((expiredUrl) => {
+      if (!expiredUrl || typeof expiredUrl !== 'string') return null;
+      
+      try {
+        const url = new URL(expiredUrl);
+        // /storage/v1/object/sign/bucket-name/folder/image.jpg
+        const pathSegments = url.pathname.split("/");
         
-        try {
-          // Parse the expired URL to get the path and bucket
-          const url = new URL(expiredUrl);
-          // Example path: /storage/v1/object/sign/bucket-name/folder/image.jpg
-          const pathSegments = url.pathname.split("/");
-          
-          const bucketName = pathSegments[4]; // "bucket-name"
-          const path = pathSegments.slice(5).join("/"); // "folder/image.jpg"
+        const bucketName = pathSegments[5]; // Correct index for bucket
+        const path = pathSegments.slice(6).join("/"); // Correct index for path
 
-          if (!bucketName || !path) {
-            console.warn("Could not parse path/bucket from URL:", expiredUrl);
-            return expiredUrl; // Return the old one if parsing fails
-          }
-
-          // Create a new signed URL, valid for 1 hour (3600 seconds)
-          const { data, error } = await supabase.storage
-            .from(bucketName)
-            .createSignedUrl(path, 3600);
-
-          if (error) {
-            console.error("Error creating new signed URL:", error);
-            return expiredUrl; // Return the old one on error
-          }
-          
-          return data.signedUrl;
-
-        } catch (e) {
-          console.warn("Invalid URL in db or parsing error:", expiredUrl, e);
-          return expiredUrl; // Return the old one on error
+        if (!bucketName || !path) {
+          console.warn("Could not parse path/bucket from URL:", expiredUrl);
+          return expiredUrl;
         }
-      })
-    );
 
-    const file_urls = fresh_signed_urls.filter(Boolean); // Filter out any nulls
+        // --- THIS IS THE KEY CHANGE ---
+        // This synchronously creates the public URL string.
+        const { data } = supabase.storage
+          .from(bucketName)
+          .getPublicUrl(path);
+
+        return data.publicUrl;
+
+      } catch (e) {
+        console.warn("Invalid URL in db or parsing error:", expiredUrl, e);
+        return expiredUrl;
+      }
+    });
+
+    const file_urls = public_urls.filter(Boolean); // Filter out any nulls
     const status = r.archived_at ? "Archived" : r.status;
     return { ...r, file_urls, status, draftResponse: r.official_response || "" };
   };
 
   //
-  // --- ✅ MODIFICATION #2: fetchReports now awaits all URLs ---
+  // --- ✅ FIXED FUNCTION #2: fetchReports (no longer needs Promise.all) ---
   //
   const fetchReports = async () => {
     setLoading(true);
@@ -446,10 +438,8 @@ export default function Reports() {
 
       if (error) throw error;
       
-      // We must now 'await' the normalization, as it's async
-      const normalizedReports = await Promise.all(
-        (reportsData || []).map(normalizeReport)
-      );
+      // We removed 'await Promise.all' because normalizeReport is now synchronous
+      const normalizedReports = (reportsData || []).map(normalizeReport);
       
       setReports(normalizedReports);
     } catch (err) {
@@ -461,7 +451,7 @@ export default function Reports() {
   };
 
   //
-  // --- ✅ MODIFICATION #3: fetchArchivedReports now awaits all URLs ---
+  // --- ✅ FIXED FUNCTION #3: fetchArchivedReports (no longer needs Promise.all) ---
   //
   const fetchArchivedReports = async () => {
     try {
@@ -470,10 +460,8 @@ export default function Reports() {
         .select("*")
         .order("archived_at", { ascending: false });
 
-      // We must now 'await' the normalization, as it's async
-      const normalizedArchived = await Promise.all(
-        (data || []).map(normalizeReport)
-      );
+      // We removed 'await Promise.all' because normalizeReport is now synchronous
+      const normalizedArchived = (data || []).map(normalizeReport);
 
       setArchived(normalizedArchived);
     } catch (err) {
@@ -626,10 +614,9 @@ export default function Reports() {
     }
   };
 
-  // --- archiveReport (Unchanged) ---
-  // This will now save the freshly-signed URLs, but that's okay.
-  // When they are fetched from the archive, normalizeReport will run again
-  // and generate *new* ones. This is a self-healing loop.
+  //
+  // --- ✅ FIXED FUNCTION #4: archiveReport (no longer needs await) ---
+  //
   const archiveReport = async (report) => {
     const result = await Swal.fire({
       title: "Archive this report?",
@@ -666,8 +653,9 @@ export default function Reports() {
       await supabase.from("reports").delete().eq("id", report.id);
 
       setReports((prev) => prev.filter((r) => r.id !== report.id));
-      // Manually normalize the new archive record
-      const normalizedNewArchive = await normalizeReport(newArchivedRecord);
+      
+      // Removed 'await' since normalizeReport is now synchronous
+      const normalizedNewArchive = normalizeReport(newArchivedRecord);
       setArchived((prev) => [normalizedNewArchive, ...prev]);
       
       setResponseModalReport(null);
@@ -690,9 +678,8 @@ export default function Reports() {
     }
   };
 
+
   // --- restoreReport (Unchanged) ---
-  // This is also fine. It will restore the signed URLs from the archive
-  // into the 'reports' table. The next 'fetchReports' will fix them.
   const restoreReport = async (report) => {
     Swal.fire({ title: "Restoring...", didOpen: () => Swal.showLoading() });
     try {
@@ -954,7 +941,7 @@ export default function Reports() {
                 {report.file_urls.length} Attachment
                 {report.file_urls.length > 1 ? "s" : ""}
               </span>
-              {/* This part will now work because file_urls are fresh */}
+              {/* This part will now work because file_urls are public */}
               <div className="flex flex-wrap gap-2 mt-2">
                 {report.file_urls.map((url, idx) => (
                   <MediaPreview key={idx} url={url} />

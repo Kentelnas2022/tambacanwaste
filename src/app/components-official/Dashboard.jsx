@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import jsPDF from "jspdf"; // <-- NEW: Import the PDF library
 import {
   CheckCircle2,
   Trash2,
@@ -20,13 +21,13 @@ import {
   Recycle,
   ChevronRight,
   ArrowUp,
+  Download,
 } from "lucide-react";
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   BarChart,
@@ -35,7 +36,7 @@ import {
 } from "recharts";
 import { supabase } from "@/supabaseClient";
 
-// Helper component for the gradient icon containers
+// Helper component (unchanged)
 const IconContainer = ({ accent, children }) => {
   const gradients = {
     "blue-500": "from-blue-500 to-blue-600",
@@ -65,7 +66,7 @@ export default function Dashboard() {
   const [selectedPurok, setSelectedPurok] = useState("All");
   const [totalResidents, setTotalResidents] = useState(0);
   const [complianceData, setComplianceData] = useState([]);
-  const [overallCompliance, setOverallCompliance] = useState(0); // ← add this line
+  const [overallCompliance, setOverallCompliance] = useState(0);
   const [completedCollectionsToday, setCompletedCollectionsToday] = useState(0);
   const [activities, setActivities] = useState([]);
   const [collectionEfficiency, setCollectionEfficiency] = useState(0);
@@ -73,7 +74,6 @@ export default function Dashboard() {
   const [pendingReports, setPendingReports] = useState(0);
   const [activeRoutes, setActiveRoutes] = useState(0);
   const [citizenParticipation, setCitizenParticipation] = useState(0);
-  const [totalReports, setTotalReports] = useState(0);
 
   const typeStyles = {
     complete: {
@@ -108,336 +108,6 @@ export default function Dashboard() {
     },
   };
 
-  // 🧠 Fetch education
-  useEffect(() => {
-    const fetchEducationStats = async () => {
-      const { count: activeCount } = await supabase
-        .from("educational_contents")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "Published");
-      const { count: archivedCount } = await supabase
-        .from("archived_education")
-        .select("*", { count: "exact", head: true });
-      setActiveEducation(activeCount || 0);
-      setArchivedEducation(archivedCount || 0);
-    };
-    fetchEducationStats();
-  }, []);
-
-  // 👥 Residents
-  useEffect(() => {
-    const fetchResidents = async () => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("uid, name, purok, role")
-        .eq("role", "resident")
-        .not("purok", "is", null)
-        .not("purok", "eq", "");
-
-      if (error) {
-        console.error("❌ Error fetching residents:", error.message);
-        return;
-      }
-
-      console.log("✅ Residents fetched:", data);
-
-      if (data && data.length > 0) {
-        setAllResidents(data);
-        setPurokList([...new Set(data.map((r) => r.purok).filter(Boolean))].sort());
-      } else {
-        console.warn("⚠️ No residents found or missing purok");
-      }
-    };
-
-    fetchResidents();
-  }, []);
-
-  // ✅ Group purok data for chart or summary
-  useEffect(() => {
-    if (!Array.isArray(allResidents) || allResidents.length === 0) {
-      setTotalResidents(0);
-      setPurokData([]);
-      return;
-    }
-
-    const filteredResidents =
-      selectedPurok === "All"
-        ? allResidents
-        : allResidents.filter((r) => r.purok === selectedPurok);
-
-    setTotalResidents(filteredResidents.length);
-
-    const groupedByPurok = filteredResidents.reduce((acc, resident) => {
-      const purokName = resident.purok?.trim() || "Unassigned";
-      acc[purokName] = (acc[purokName] || 0) + 1;
-      return acc;
-    }, {});
-
-    const formattedData = Object.entries(groupedByPurok)
-      .map(([purok, users]) => ({ name: purok, users }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    setPurokData(formattedData);
-  }, [allResidents, selectedPurok]);
-
-  // 🧾 Compliance (static)
- // 🧾 Compliance (dynamic by area)
-useEffect(() => {
-  const fetchComplianceRates = async () => {
-    try {
-      // 1) fetch residents (only residents with assigned purok)
-      const { data: residents, error: residentsError } = await supabase
-        .from("users")
-        .select("uid, purok")
-        .eq("role", "resident")
-        .not("purok", "is", null)
-        .not("purok", "eq", "");
-
-      if (residentsError) throw residentsError;
-      if (!residents || residents.length === 0) {
-        setComplianceData([]);
-        setOverallCompliance(0);
-        return;
-      }
-
-      // 2) fetch reports (we only need user_id to know who submitted)
-      const { data: reports, error: reportsError } = await supabase
-        .from("reports")
-        .select("user_id");
-
-      if (reportsError) throw reportsError;
-
-      // 3) group residents by purok
-      const purokGroups = residents.reduce((acc, r) => {
-        const name = r.purok?.toString().trim() || "Unassigned";
-        if (!acc[name]) acc[name] = { total: 0, submitted: 0 };
-        acc[name].total += 1;
-        return acc;
-      }, {});
-
-      // 4) count submitted per purok
-      const reportedUserIds = new Set((reports || []).map((r) => r.user_id));
-      residents.forEach((r) => {
-        const name = r.purok?.toString().trim() || "Unassigned";
-        if (reportedUserIds.has(r.uid) && purokGroups[name]) {
-          purokGroups[name].submitted += 1;
-        }
-      });
-
-      // 5) compute per-purok compliance array
-      const compliance = Object.entries(purokGroups).map(([purok, stats]) => ({
-        area: purok,
-        rate: stats.total > 0 ? parseFloat(((stats.submitted / stats.total) * 100).toFixed(1)) : 0,
-      }));
-
-      setComplianceData(compliance);
-
-      // 6) compute overall average compliance (0..100)
-      const avg =
-        compliance.length > 0
-          ? compliance.reduce((acc, cur) => acc + (parseFloat(cur.rate) || 0), 0) / compliance.length
-          : 0;
-
-      setOverallCompliance(parseFloat(avg.toFixed(1)));
-    } catch (error) {
-      console.error("❌ Error fetching compliance data:", error?.message ?? error);
-      setComplianceData([]);
-      setOverallCompliance(0);
-    }
-  };
-
-  // initial fetch
-  fetchComplianceRates();
-
-  // realtime listener: refresh when a new report is inserted
-  const channel = supabase
-    .channel("realtime-compliance")
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "reports" },
-      () => {
-        fetchComplianceRates();
-      }
-    )
-    .subscribe();
-
-  return () => {
-    // cleanup the channel on unmount
-    supabase.removeChannel(channel);
-  };
-}, []);
-
-
-  // ✅ Active Routes (only ongoing) - Realtime
-  useEffect(() => {
-    const fetchActiveRoutes = async () => {
-      const { count } = await supabase
-        .from("schedules")
-        .select("status", { count: "exact", head: true })
-        .eq("status", "ongoing");
-      setActiveRoutes(count || 0);
-    };
-    fetchActiveRoutes();
-    const channel = supabase
-      .channel("realtime-active-routes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "schedules" },
-        (payload) => {
-          const newStatus = payload.new?.status?.toLowerCase();
-          const oldStatus = payload.old?.status?.toLowerCase();
-          if (newStatus === "ongoing" || oldStatus === "ongoing") {
-            fetchActiveRoutes();
-          }
-        }
-      )
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, []);
-
-  // ✅ Completed Schedules
-  useEffect(() => {
-    const fetchCompleted = async () => {
-      const { count } = await supabase
-        .from("schedules")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "completed");
-      setCompletedCollectionsToday(count || 0);
-    };
-    fetchCompleted();
-  }, []);
-
-  // 🕒 Recent Activities (dynamic from schedules) - Realtime
-  useEffect(() => {
-    const fetchActivities = async () => {
-      const { data, error } = await supabase
-        .from("schedules")
-        .select("schedule_id, status, date, purok, updated_at")
-        .order("updated_at", { ascending: false })
-        .limit(5);
-      if (error) {
-        console.error("Error fetching schedules:", error);
-        return;
-      }
-
-      const filtered = (data || [])
-        .filter((s) =>
-          ["ongoing", "completed"].includes(s.status?.toLowerCase())
-        )
-        .map((s) => ({
-          id: s.schedule_id,
-          type: s.status.toLowerCase() === "completed" ? "complete" : "update",
-          action:
-            s.status.toLowerCase() === "completed"
-              ? `Collection completed in Purok ${s.purok || "Unknown"}`
-              : `Collection ongoing in Purok ${s.purok || "Unknown"}`,
-          created_at: s.updated_at || new Date().toISOString(),
-        }));
-      setActivities(filtered);
-    };
-    fetchActivities();
-    const channel = supabase
-      .channel("realtime-schedules")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "schedules" },
-        (payload) => {
-          const newStatus = payload.new.status?.toLowerCase();
-          if (["ongoing", "completed"].includes(newStatus)) {
-            fetchActivities();
-          }
-        }
-      )
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, []);
-
-  // ✅ Pending Reports
-  useEffect(() => {
-    const fetchReports = async () => {
-      const { data: reports } = await supabase.from("reports").select("id");
-      if (!reports || reports.length === 0) return setPendingReports(0);
-      const reportIds = reports.map((r) => r.id);
-      const { data: statuses } = await supabase
-        .from("report_status")
-        .select("report_id, status")
-        .in("report_id", reportIds);
-      const latestStatus = {};
-      statuses?.forEach((s) => (latestStatus[s.report_id] = s.status));
-      const pending = reports.filter(
-        (r) => (latestStatus[r.id] || "Pending") === "Pending"
-      );
-      setPendingReports(pending.length);
-    };
-    fetchReports();
-  }, []);
-
-  // ✅ Citizen Participation
-  useEffect(() => {
-    if (totalResidents === 0) return;
-    const fetchReportsForParticipation = async () => {
-      const { data: reports } = await supabase
-        .from("reports")
-        .select("user_id");
-      if (!reports || reports.length === 0) {
-        setCitizenParticipation(0);
-        return;
-      }
-      const reportedResidents = new Set(
-        reports.map((report) => report.user_id)
-      );
-      const participationPercentage =
-        (reportedResidents.size / totalResidents) * 100;
-      setCitizenParticipation(
-        participationPercentage > 100
-          ? 100
-          : participationPercentage.toFixed(1)
-      );
-    };
-    fetchReportsForParticipation();
-  }, [totalResidents]);
-
-  // ✅ Efficiency chart
-  useEffect(() => {
-    const fetchEfficiency = async () => {
-      const { data } = await supabase.from("schedules").select("date, status");
-      if (!data || data.length === 0) {
-        setEfficiencyData([]);
-        setCollectionEfficiency(0);
-        return;
-      }
-      const grouped = data.reduce((acc, s) => {
-        const day = new Date(s.date).toLocaleString("en-US", {
-          weekday: "short",
-        });
-        acc[day] = acc[day] || { total: 0, completed: 0 };
-        acc[day].total++;
-        if (s.status === "completed") acc[day].completed++;
-        return acc;
-      }, {});
-
-      const dayOrder = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const formattedData = dayOrder.map((day) => ({
-        day,
-        efficiency: grouped[day]
-          ? ((grouped[day].completed / grouped[day].total) * 100).toFixed(0)
-          : 0,
-      }));
-      setEfficiencyData(formattedData);
-
-      const totalCompleted = data.filter(
-        (s) => s.status === "completed"
-      ).length;
-      const totalSchedules = data.length;
-      const avgEfficiency =
-        totalSchedules > 0
-          ? ((totalCompleted / totalSchedules) * 100).toFixed(1)
-          : 0;
-      setCollectionEfficiency(avgEfficiency);
-    };
-    fetchEfficiency();
-  }, []);
-
   // --- CARD DEFINITIONS ---
   const cards = [
     {
@@ -452,39 +122,38 @@ useEffect(() => {
       showTrendIcon: true,
     },
     {
-  id: "compliance",
-  title: "Compliance Rate",
-  value: `${overallCompliance}%`,
-  subtitle:
-    overallCompliance >= 90
-      ? "Excellent compliance"
-      : overallCompliance >= 70
-      ? "Good compliance"
-      : overallCompliance > 0
-      ? "Needs improvement"
-      : "No data yet",
-  accent:
-    overallCompliance >= 90
-      ? "green-500"
-      : overallCompliance >= 70
-      ? "yellow-500"
-      : "red-500",
-  valueColor:
-    overallCompliance >= 90
-      ? "text-green-600"
-      : overallCompliance >= 70
-      ? "text-yellow-600"
-      : "text-red-600",
-  icon: CheckCircle2,
-  subtitleColor:
-    overallCompliance >= 90
-      ? "text-green-500"
-      : overallCompliance >= 70
-      ? "text-yellow-500"
-      : "text-red-500",
-  showTrendIcon: false,
-},
-
+      id: "compliance",
+      title: "Compliance Rate",
+      value: `${overallCompliance}%`,
+      subtitle:
+        overallCompliance >= 90
+          ? "Excellent compliance"
+          : overallCompliance >= 70
+          ? "Good compliance"
+          : overallCompliance > 0
+          ? "Needs improvement"
+          : "No data yet",
+      accent:
+        overallCompliance >= 90
+          ? "green-500"
+          : overallCompliance >= 70
+          ? "yellow-500"
+          : "red-500",
+      valueColor:
+        overallCompliance >= 90
+          ? "text-green-600"
+          : overallCompliance >= 70
+          ? "text-yellow-600"
+          : "text-red-600",
+      icon: CheckCircle2,
+      subtitleColor:
+        overallCompliance >= 90
+          ? "text-green-500"
+          : overallCompliance >= 70
+          ? "text-yellow-500"
+          : "text-red-500",
+      showTrendIcon: false,
+    },
     {
       id: "reports",
       title: "Pending Reports",
@@ -531,27 +200,566 @@ useEffect(() => {
     },
   ];
 
-  // --- PUROK COLORS ---
+  // --- NEW PDF DOWNLOAD FUNCTION ---
+  const handleDownloadReport = () => {
+    const doc = new jsPDF();
+    const today = new Date();
+    const dateStamp = today.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const fileName = `Analytics_Report_${today.toISOString().split("T")[0]}.pdf`;
+
+    let yPos = 20; // This is our "vertical cursor"
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+    const listIndent = 25;
+    const sectionSpacing = 10;
+    const itemSpacing = 7;
+
+    // Helper function to add a new page if we're at the bottom
+    const checkAddPage = () => {
+      if (yPos + margin > pageHeight) {
+        doc.addPage();
+        yPos = margin; // Reset to top
+      }
+    };
+
+    // --- 1. Report Title ---
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text("Waste Management Analytics Report", 105, yPos, {
+      align: "center",
+    });
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(dateStamp, 105, yPos, { align: "center" });
+    yPos += sectionSpacing * 2; // Extra space after title
+
+    // --- 2. Key Metrics ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Key Metrics", margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    cards.forEach((card) => {
+      checkAddPage();
+      doc.text(`${card.title}: ${card.value}`, listIndent, yPos);
+      yPos += itemSpacing;
+    });
+    yPos += sectionSpacing;
+
+    // --- 3. Detailed Analytics ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Detailed Analytics", margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    checkAddPage();
+    doc.text(
+      `Overall Citizen Participation: ${citizenParticipation}%`,
+      listIndent,
+      yPos
+    );
+    yPos += itemSpacing;
+    checkAddPage();
+    doc.text(
+      `Overall Collection Efficiency: ${collectionEfficiency}%`,
+      listIndent,
+      yPos
+    );
+    yPos += sectionSpacing;
+
+    // --- 4. Residents per Purok ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Residents per Purok (Total: ${totalResidents})`, margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    if (purokData.length > 0) {
+      purokData.forEach((purok) => {
+        checkAddPage();
+        doc.text(
+          `Purok ${purok.name}: ${purok.users} residents`,
+          listIndent,
+          yPos
+        );
+        yPos += itemSpacing;
+      });
+    } else {
+      checkAddPage();
+      doc.text("No resident data available.", listIndent, yPos);
+      yPos += itemSpacing;
+    }
+    yPos += sectionSpacing;
+
+    // --- 5. Compliance Rates by Area ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Compliance Rates (Overall: ${overallCompliance}%)`, margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    if (complianceData.length > 0) {
+      complianceData.forEach((area) => {
+        checkAddPage();
+        doc.text(`Area ${area.area}: ${area.rate}%`, listIndent, yPos);
+        yPos += itemSpacing;
+      });
+    } else {
+      checkAddPage();
+      doc.text("No compliance data available.", listIndent, yPos);
+      yPos += itemSpacing;
+    }
+    yPos += sectionSpacing;
+
+    // --- 6. Weekly Collection Efficiency ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Weekly Collection Efficiency", margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    if (efficiencyData.length > 0) {
+      efficiencyData.forEach((day) => {
+        checkAddPage();
+        doc.text(`${day.day}: ${day.efficiency}%`, listIndent, yPos);
+        yPos += itemSpacing;
+      });
+    } else {
+      checkAddPage();
+      doc.text("No efficiency data available.", listIndent, yPos);
+      yPos += itemSpacing;
+    }
+    yPos += sectionSpacing;
+
+    // --- 7. Recent Activities ---
+    checkAddPage();
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Recent Activities (Last 5)", margin, yPos);
+    yPos += itemSpacing;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+
+    if (activities.length > 0) {
+      activities.forEach((activity) => {
+        checkAddPage();
+        const activityText = `[${new Date(
+          activity.created_at
+        ).toLocaleString()}] ${activity.action}`;
+        // Split long text to prevent overflow
+        const splitText = doc.splitTextToSize(activityText, 170);
+        doc.text(splitText, listIndent, yPos);
+        yPos += itemSpacing * splitText.length; // Move cursor down by number of lines
+      });
+    } else {
+      checkAddPage();
+      doc.text("No recent activities.", listIndent, yPos);
+      yPos += itemSpacing;
+    }
+
+    // --- Save the file ---
+    doc.save(fileName);
+  };
+
+  // 🧠 Fetch education (unchanged)
+  useEffect(() => {
+    const fetchEducationStats = async () => {
+      const { count: activeCount } = await supabase
+        .from("educational_contents")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "Published");
+      const { count: archivedCount } = await supabase
+        .from("archived_education")
+        .select("*", { count: "exact", head: true });
+      setActiveEducation(activeCount || 0);
+      setArchivedEducation(archivedCount || 0);
+    };
+    fetchEducationStats();
+  }, []);
+
+  // 👥 Residents (unchanged)
+  useEffect(() => {
+    const fetchResidents = async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("uid, name, purok, role")
+        .eq("role", "resident")
+        .not("purok", "is", null)
+        .not("purok", "eq", "");
+
+      if (error) {
+        console.error("❌ Error fetching residents:", error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        setAllResidents(data);
+        setPurokList([...new Set(data.map((r) => r.purok).filter(Boolean))].sort());
+      }
+    };
+
+    fetchResidents();
+  }, []);
+
+  // ✅ Group purok data for chart or summary (unchanged)
+  useEffect(() => {
+    if (!Array.isArray(allResidents) || allResidents.length === 0) {
+      setTotalResidents(0);
+      setPurokData([]);
+      return;
+    }
+
+    const filteredResidents =
+      selectedPurok === "All"
+        ? allResidents
+        : allResidents.filter((r) => r.purok === selectedPurok);
+
+    setTotalResidents(filteredResidents.length);
+
+    const groupedByPurok = filteredResidents.reduce((acc, resident) => {
+      const purokName = resident.purok?.trim() || "Unassigned";
+      acc[purokName] = (acc[purokName] || 0) + 1;
+      return acc;
+    }, {});
+
+    const formattedData = Object.entries(groupedByPurok)
+      .map(([purok, users]) => ({ name: purok, users }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    setPurokData(formattedData);
+  }, [allResidents, selectedPurok]);
+
+  // 🧾 Compliance (dynamic by area) (unchanged)
+  useEffect(() => {
+    const fetchComplianceRates = async () => {
+      try {
+        const { data: residents, error: residentsError } = await supabase
+          .from("users")
+          .select("uid, purok")
+          .eq("role", "resident")
+          .not("purok", "is", null)
+          .not("purok", "eq", "");
+
+        if (residentsError) throw residentsError;
+        if (!residents || residents.length === 0) {
+          setComplianceData([]);
+          setOverallCompliance(0);
+          return;
+        }
+
+        const { data: reports, error: reportsError } = await supabase
+          .from("reports")
+          .select("user_id");
+
+        if (reportsError) throw reportsError;
+
+        const purokGroups = residents.reduce((acc, r) => {
+          const name = r.purok?.toString().trim() || "Unassigned";
+          if (!acc[name]) acc[name] = { total: 0, submitted: 0 };
+          acc[name].total += 1;
+          return acc;
+        }, {});
+
+        const reportedUserIds = new Set((reports || []).map((r) => r.user_id));
+        residents.forEach((r) => {
+          const name = r.purok?.toString().trim() || "Unassigned";
+          if (reportedUserIds.has(r.uid) && purokGroups[name]) {
+            purokGroups[name].submitted += 1;
+          }
+        });
+
+        const compliance = Object.entries(purokGroups).map(([purok, stats]) => ({
+          area: purok,
+          rate:
+            stats.total > 0
+              ? parseFloat(((stats.submitted / stats.total) * 100).toFixed(1))
+              : 0,
+        }));
+
+        setComplianceData(compliance);
+
+        const avg =
+          compliance.length > 0
+            ? compliance.reduce((acc, cur) => acc + (parseFloat(cur.rate) || 0), 0) /
+              compliance.length
+            : 0;
+
+        setOverallCompliance(parseFloat(avg.toFixed(1)));
+      } catch (error) {
+        console.error("❌ Error fetching compliance data:", error?.message ?? error);
+        setComplianceData([]);
+        setOverallCompliance(0);
+      }
+    };
+    fetchComplianceRates();
+    const channel = supabase
+      .channel("realtime-compliance")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "reports" },
+        () => {
+          fetchComplianceRates();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // ✅ Active Routes (only ongoing) - Realtime (unchanged)
+  useEffect(() => {
+    const fetchActiveRoutes = async () => {
+      const { count } = await supabase
+        .from("schedules")
+        .select("status", { count: "exact", head: true })
+        .eq("status", "ongoing");
+      setActiveRoutes(count || 0);
+    };
+    fetchActiveRoutes();
+    const channel = supabase
+      .channel("realtime-active-routes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "schedules" },
+        (payload) => {
+          const newStatus = payload.new?.status?.toLowerCase();
+          const oldStatus = payload.old?.status?.toLowerCase();
+          if (newStatus === "ongoing" || oldStatus === "ongoing") {
+            fetchActiveRoutes();
+          }
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  // ✅ Completed Schedules (unchanged)
+  useEffect(() => {
+    const fetchCompleted = async () => {
+      const { count } = await supabase
+        .from("schedules")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "completed");
+      setCompletedCollectionsToday(count || 0);
+    };
+    fetchCompleted();
+  }, []);
+
+  // 🕒 Recent Activities (dynamic from schedules) - Realtime (unchanged)
+  useEffect(() => {
+  const fetchActivities = async () => {
+    try {
+      // Fetch schedules
+      const { data: schedules, error: scheduleError } = await supabase
+        .from("schedules")
+        .select("schedule_id, status, date, purok, updated_at")
+        .order("updated_at", { ascending: false })
+        .limit(5);
+      if (scheduleError) throw scheduleError;
+
+      const scheduleActivities =
+        schedules?.map((s) => ({
+          id: s.schedule_id,
+          type: s.status.toLowerCase() === "completed" ? "complete" : "update",
+          action:
+            s.status.toLowerCase() === "completed"
+              ? `Collection completed in Purok ${s.purok || "Unknown"}`
+              : `Collection ongoing in Purok ${s.purok || "Unknown"}`,
+          created_at: s.updated_at || new Date().toISOString(),
+        })) || [];
+
+      // Fetch reports
+      const { data: reports, error: reportError } = await supabase
+        .from("reports")
+        .select("id, title, location, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (reportError) throw reportError;
+
+      const reportActivities =
+        reports?.map((r) => ({
+          id: r.id,
+          type: "report",
+          action: `New report submitted: "${r.title}" at ${r.location}`,
+          created_at: r.created_at,
+        })) || [];
+
+      // Merge + sort both by most recent
+      const merged = [...scheduleActivities, ...reportActivities]
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() -
+            new Date(a.created_at).getTime()
+        )
+        .slice(0, 5);
+
+      setActivities(merged);
+    } catch (err) {
+      console.error("Error fetching activities:", err.message);
+    }
+  };
+
+  fetchActivities();
+
+  // Listen for new or updated items in real-time
+  const channel = supabase
+    .channel("realtime-activities")
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "schedules" },
+      fetchActivities
+    )
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "reports" },
+      fetchActivities
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+
+  // ✅ Pending Reports (unchanged)
+  useEffect(() => {
+    const fetchReports = async () => {
+      const { data: reports } = await supabase.from("reports").select("id");
+      if (!reports || reports.length === 0) return setPendingReports(0);
+      const reportIds = reports.map((r) => r.id);
+      const { data: statuses } = await supabase
+        .from("report_status")
+        .select("report_id, status")
+        .in("report_id", reportIds);
+      const latestStatus = {};
+      statuses?.forEach((s) => (latestStatus[s.report_id] = s.status));
+      const pending = reports.filter(
+        (r) => (latestStatus[r.id] || "Pending") === "Pending"
+      );
+      setPendingReports(pending.length);
+    };
+    fetchReports();
+  }, []);
+
+  // ✅ Citizen Participation (unchanged)
+  useEffect(() => {
+    if (totalResidents === 0) return;
+    const fetchReportsForParticipation = async () => {
+      const { data: reports } = await supabase
+        .from("reports")
+        .select("user_id");
+      if (!reports || reports.length === 0) {
+        setCitizenParticipation(0);
+        return;
+      }
+      const reportedResidents = new Set(
+        reports.map((report) => report.user_id)
+      );
+      const participationPercentage =
+        (reportedResidents.size / totalResidents) * 100;
+      setCitizenParticipation(
+        participationPercentage > 100
+          ? 100
+          : participationPercentage.toFixed(1)
+      );
+    };
+    fetchReportsForParticipation();
+  }, [totalResidents]);
+
+  // ✅ Efficiency chart (unchanged)
+  useEffect(() => {
+    const fetchEfficiency = async () => {
+      const { data } = await supabase.from("schedules").select("date, status");
+      if (!data || data.length === 0) {
+        setEfficiencyData([]);
+        setCollectionEfficiency(0);
+        return;
+      }
+      const grouped = data.reduce((acc, s) => {
+        const day = new Date(s.date).toLocaleString("en-US", {
+          weekday: "short",
+        });
+        acc[day] = acc[day] || { total: 0, completed: 0 };
+        acc[day].total++;
+        if (s.status === "completed") acc[day].completed++;
+        return acc;
+      }, {});
+
+      const dayOrder = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const formattedData = dayOrder.map((day) => ({
+        day,
+        efficiency: grouped[day]
+          ? ((grouped[day].completed / grouped[day].total) * 100).toFixed(0)
+          : 0,
+      }));
+      setEfficiencyData(formattedData);
+
+      const totalCompleted = data.filter(
+        (s) => s.status === "completed"
+      ).length;
+      const totalSchedules = data.length;
+      const avgEfficiency =
+        totalSchedules > 0
+          ? ((totalCompleted / totalSchedules) * 100).toFixed(1)
+          : 0;
+      setCollectionEfficiency(avgEfficiency);
+    };
+    fetchEfficiency();
+  }, []);
+
+  // --- PUROK COLORS --- (unchanged)
   const PUROK_COLORS = [
-    "#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#83a6ed", "#a4de6c",
-    "#d0ed57", "#ffc0cb", "#bada55", "#008080", "#ff69b4", "#f0e68c",
+    "#8884d8",
+    "#82ca9d",
+    "#ffc658",
+    "#ff8042",
+    "#83a6ed",
+    "#a4de6c",
+    "#d0ed57",
+    "#ffc0cb",
+    "#bada55",
+    "#008080",
+    "#ff69b4",
+    "#f0e68c",
   ];
 
   // --- UI Render ---
   return (
     <section className="dashboard-bg min-h-screen p-4 sm:p-6 space-y-6 relative z-0">
-      {/* --- Floating Background Elements --- */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-blue-200 rounded-full opacity-10 blur-3xl"></div>
-        <div className="absolute top-0 right-0 w-72 h-72 bg-green-200 rounded-full opacity-10 blur-3xl animation-delay-300"></div>
-        <div className="absolute bottom-0 left-1/4 w-64 h-64 bg-yellow-200 rounded-full opacity-10 blur-3xl animation-delay-600"></div>
-        <div className="absolute bottom-0 right-0 w-72 h-72 bg-purple-200 rounded-full opacity-10 blur-3xl animation-delay-900"></div>
-      </div>
-
-      {/* --- Container to limit width and center --- */}
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* --- Download Button Row --- */}
+        <div className="flex justify-end relative z-10">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleDownloadReport}
+            className="flex items-center gap-2 px-4 py-2 bg-red-800 hover:bg-red-700 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+          >
+            <Download className="w-4 h-4" />
+            Download Report (.pdf) {/* <-- NEW: Updated button text */}
+          </motion.button>
+        </div>
 
-        {/* --- Top Cards: NEW DESIGN APPLIED --- */}
+        {/* --- Top Cards: NEW DESIGN APPLIED --- (unchanged) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6 relative z-10">
           {cards.map((card) => {
             const accentBg = `bg-${card.accent.split("-")[0]}-500`;
@@ -561,13 +769,10 @@ useEffect(() => {
                 whileTap={{ scale: 0.98 }}
                 className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
               >
-                {/* Background Blob */}
                 <div
                   className={`absolute -top-1/3 -left-1/3 w-2/3 h-2/3 ${accentBg} rounded-full opacity-15 blur-2xl pointer-events-none`}
                 ></div>
-
                 <div className="flex justify-between items-center relative z-10">
-                  {/* Left Side: Text Content */}
                   <div className="flex flex-col">
                     <p className="text-gray-500 text-xs sm:text-sm font-medium mb-1">
                       {card.title}
@@ -598,28 +803,23 @@ useEffect(() => {
                       <span>{card.subtitle}</span>
                     </div>
                   </div>
-
-                  {/* Right Side: Icon */}
                   <IconContainer accent={card.accent}>
                     <card.icon className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                   </IconContainer>
                 </div>
-
-                {/* Subtle Arrow Bottom Right */}
                 <ChevronRight className="absolute bottom-4 right-4 w-5 h-5 text-gray-300 opacity-50" />
               </motion.div>
             );
           })}
         </div>
 
-        {/* --- Main Content Area --- */}
+        {/* --- Main Content Area --- (unchanged) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 relative z-10">
           {/* --- Cell 1: Residents per Purok --- */}
           <motion.div
             whileTap={{ scale: 0.98 }}
             className="hover-lift rounded-3xl shadow-lg p-5 sm:p-6 relative overflow-hidden"
           >
-            {/* Background Blob */}
             <div className="absolute -top-1/4 -right-1/4 w-1/2 h-1/2 bg-white rounded-full opacity-10 blur-2xl pointer-events-none"></div>
             <div className="relative z-10">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
@@ -654,7 +854,6 @@ useEffect(() => {
               <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={purokData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
                     <XAxis dataKey="name" />
                     <YAxis allowDecimals={false} />
                     <Tooltip
@@ -699,7 +898,6 @@ useEffect(() => {
               <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={complianceData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
                     <XAxis dataKey="area" />
                     <YAxis />
                     <Tooltip
@@ -739,18 +937,17 @@ useEffect(() => {
               <div className="chart-container h-64 sm:h-72 bg-opacity-70 rounded-2xl p-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={efficiencyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5}/>
                     <XAxis dataKey="day" />
                     <YAxis unit="%" />
                     <Tooltip
                       formatter={(value) => [`${value}%`, "Efficiency"]}
-                        contentStyle={{
-                          borderRadius: "0.5rem",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                          border: "none",
-                          backgroundColor: "rgba(255, 255, 255, 0.9)",
-                          backdropFilter: "blur(5px)",
-                        }}
+                      contentStyle={{
+                        borderRadius: "0.5rem",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        border: "none",
+                        backgroundColor: "rgba(255, 255, 255, 0.9)",
+                        backdropFilter: "blur(5px)",
+                      }}
                     />
                     <Line
                       type="monotone"
@@ -768,7 +965,6 @@ useEffect(() => {
 
           {/* --- Cell 4: Recent Activities & Detailed Analytics (Stacked) --- */}
           <div className="space-y-6 lg:space-y-8">
-            
             {/* --- Recent Activities (Restored Design) --- */}
             <motion.div
               whileTap={{ scale: 0.98 }}
@@ -787,7 +983,8 @@ useEffect(() => {
                     <p className="text-gray-500 text-sm">No recent activities</p>
                   ) : (
                     activities.map((activity) => {
-                      const style = typeStyles[activity.type] || typeStyles.update;
+                      const style =
+                        typeStyles[activity.type] || typeStyles.update;
                       const Icon = style.icon;
                       return (
                         <motion.div
@@ -797,7 +994,9 @@ useEffect(() => {
                           transition={{ duration: 0.3 }}
                           className={`flex items-start p-3 rounded-xl border ${style.bg} bg-opacity-70 backdrop-blur-sm`}
                         >
-                          <Icon className={`w-4 h-4 text-${style.color}-600 mr-3 mt-1 flex-shrink-0`} />
+                          <Icon
+                            className={`w-4 h-4 text-${style.color}-600 mr-3 mt-1 flex-shrink-0`}
+                          />
                           <div className="flex-grow">
                             <p className="text-sm font-medium text-slate-800 leading-tight">
                               {activity.action}
@@ -826,14 +1025,16 @@ useEffect(() => {
                     <Users className="w-5 h-5 text-orange-600" />
                   </div>
                   <p className="text-sm font-semibold text-orange-800">
-                    Citizen<br/>Participation
+                    Citizen
+                    <br />
+                    Participation
                   </p>
                 </div>
                 <p className="text-4xl font-bold text-orange-700 text-right mt-2">
                   {citizenParticipation}%
                 </p>
               </motion.div>
-              
+
               {/* Stat 2 */}
               <motion.div
                 whileTap={{ scale: 0.98 }}
@@ -844,7 +1045,9 @@ useEffect(() => {
                     <Recycle className="w-5 h-5 text-green-600" />
                   </div>
                   <p className="text-sm font-semibold text-green-800">
-                    Overall<br/>Efficiency
+                    Overall
+                    <br />
+                    Efficiency
                   </p>
                 </div>
                 <p className="text-4xl font-bold text-green-700 text-right mt-2">

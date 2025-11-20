@@ -448,7 +448,13 @@ export default function SMS() {
                 <option value="purok1">Purok 1</option>
                 <option value="purok2">Purok 2</option>
                 <option value="purok3">Purok 3</option>
-                <option value="commercial">Commercial</option>
+                <option value="purok4">Purok 4</option>
+                <option value="purok5">Purok 5</option>
+                <option value="purok6">Purok 6</option>
+                <option value="purok7">Purok 7</option>
+                <option value="purok8">Purok 8</option>
+                <option value="purok9">Purok 9</option>
+                <option value="purok10">Purok 10</option>
               </select>
             </div>
 

@@ -13,7 +13,7 @@ import {
   Inbox,
   Clock,
   AlertCircle,
-  Menu, // Added Menu icon
+  Menu,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -131,43 +131,60 @@ export default function Header({ activePage }) {
   const notifBtnRef = useRef(null);
   const notifDropdownRef = useRef(null);
 
-  // --- Auth & Data Initialization (Unchanged) ---
+  //
+  // --- ✅ FIXED: Auth & Data Initialization ---
+  // This useEffect now runs once and sets up the auth listener
+  // to handle login, logout, and initial session.
+  //
   useEffect(() => {
-    let isMounted = true;
-
-    const init = async () => {
-      console.log("Fetching user...");
-      const { data, error } = await supabase.auth.getUser();
-      if (error) {
-        console.error("Auth fetch error:", error?.message);
-        return;
-      }
-
-      const currentUser = data?.user;
-      if (isMounted && currentUser) {
-        console.log("User found:", currentUser.id);
+    // 1. Get the initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user;
+      if (currentUser) {
         setUser(currentUser);
-        await fetchNotifications(currentUser.id);
+        fetchNotifications(currentUser.id);
         subscribeToNotifications(currentUser.id);
-      } else if (isMounted) {
-        console.log("No user session found on init.");
+      } else {
+        setUser(null);
         setNotifications([]);
       }
-    };
+    });
 
-    init();
+    // 2. Listen for auth changes (Login/Logout)
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        const currentUser = session?.user;
+        setUser(currentUser ?? null);
 
+        if (currentUser) {
+          // User logged IN. Fetch and subscribe.
+          console.log("Auth change: User logged in. Fetching & subscribing.");
+          await fetchNotifications(currentUser.id);
+          subscribeToNotifications(currentUser.id);
+        } else {
+          // User logged OUT. Unsubscribe and clear.
+          console.log("Auth change: User logged out. Unsubscribing.");
+          if (notificationChannelRef.current) {
+            supabase
+              .removeChannel(notificationChannelRef.current)
+              .catch((err) => console.error("Error removing channel:", err));
+            notificationChannelRef.current = null;
+          }
+          setNotifications([]);
+        }
+      }
+    );
+
+    // 3. Cleanup listener on unmount
     return () => {
-      isMounted = false;
-      console.log("Unsubscribing from notifications channel.");
+      authListener.subscription.unsubscribe();
       if (notificationChannelRef.current) {
         supabase
           .removeChannel(notificationChannelRef.current)
           .catch((err) => console.error("Error removing channel:", err));
-        notificationChannelRef.current = null;
       }
     };
-  }, []);
+  }, []); // <-- This empty array is correct. The listener handles all updates.
 
   // --- Close dropdown on outside click (Unchanged) ---
   useEffect(() => {
@@ -222,6 +239,7 @@ export default function Header({ activePage }) {
   };
 
   const subscribeToNotifications = (uid) => {
+    // This check prevents creating duplicate subscriptions
     if (notificationChannelRef.current || !uid) {
       console.log(
         `${
@@ -236,14 +254,14 @@ export default function Header({ activePage }) {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "*", // Catches INSERT and UPDATE
           schema: "public",
           table: "notifications",
           filter: `user_id=eq.${uid}`,
         },
         (payload) => {
           console.log("Change received:", payload);
-          fetchNotifications(uid);
+          fetchNotifications(uid); // Re-fetch all to get new/updated data
 
           const newNotif = payload.new;
           const oldNotif = payload.old;
@@ -411,34 +429,31 @@ export default function Header({ activePage }) {
       default:
         // Fallback for dynamic title in page.jsx
         if (typeof window !== "undefined") {
-           const path = window.location.pathname;
-           if (path.includes("/report")) return "Report an Issue";
-           if (path.includes("/education")) return "Education";
-           if (path.includes("/profile")) return "Profile";
+          const path = window.location.pathname;
+          if (path.includes("/report")) return "Report an Issue";
+          if (path.includes("/education")) return "Education";
+          if (path.includes("/profile")) return "Profile";
         }
         return "Schedule"; // Default
     }
   };
-  
-  // --- UPDATED: Get title from activePage, but show "Residents Dashboard" on schedule page ---
-  const pageTitle = getPageTitle(activePage);
-  const displayTitle = activePage === 'schedule' ? "Residents Dashboard" : pageTitle;
 
+  // --- Get title from activePage, but show "Residents Dashboard" on schedule page (Unchanged) ---
+  const pageTitle = getPageTitle(activePage);
+  const displayTitle =
+    activePage === "schedule" ? "Residents Dashboard" : pageTitle;
 
   return (
     <>
-      {/* --- UPDATED Header Bar (Matches target HTML) --- */}
+      {/* --- Header Bar (Unchanged) --- */}
       <nav className="bg-[#8B0000] text-white p-4 sticky top-0 z-40 shadow-lg">
-        {/* --- UPDATED: Added max-w-7xl mx-auto --- */}
         <div className="flex justify-between items-center max-w-7xl mx-auto">
           <h1 id="page-title" className="text-xl font-bold text-white">
-            {/* Show "Residents Dashboard" on schedule, else dynamic title */}
             {displayTitle}
           </h1>
 
-          {/* --- UPDATED: space-x-4 from target --- */}
           <div className="flex items-center space-x-4">
-            {/* Notification Button (Matches target style) */}
+            {/* Notification Button (Unchanged) */}
             <button
               ref={notifBtnRef}
               onClick={() => setIsNotifOpen((prev) => !prev)}
@@ -458,7 +473,7 @@ export default function Header({ activePage }) {
               )}
             </button>
 
-            {/* --- UPDATED: Profile Button to use Menu icon --- */}
+            {/* Profile Button (Unchanged) */}
             <button
               ref={profileBtnRef}
               id="profile-btn"
@@ -471,7 +486,6 @@ export default function Header({ activePage }) {
               aria-haspopup="true"
               aria-expanded={isProfileOpen}
             >
-              {/* --- UPDATED: Icon changed to Menu --- */}
               <Menu className="w-6 h-6" />
             </button>
           </div>
@@ -550,7 +564,7 @@ export default function Header({ activePage }) {
         )}
       </AnimatePresence>
 
-      {/* --- UPDATED Profile Dropdown (Matches target style) --- */}
+      {/* --- Profile Dropdown (Unchanged) --- */}
       <AnimatePresence>
         {isProfileOpen && (
           <motion.div
@@ -560,13 +574,11 @@ export default function Header({ activePage }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -10 }}
             transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
-            // --- UPDATED: rounded-lg and shadow-xl from target ---
             className="absolute right-4 top-16 mt-1 w-48 origin-top-right bg-white rounded-lg shadow-xl z-50 ring-1 ring-black ring-opacity-5 focus:outline-none"
             role="menu"
             aria-orientation="vertical"
             aria-labelledby="profile-btn"
           >
-            {/* --- UPDATED: py-2 from target --- */}
             <div className="py-2" role="none">
               <button
                 onClick={() => {

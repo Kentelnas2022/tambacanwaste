@@ -55,6 +55,7 @@ export default function Schedule() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [routePoints, setRoutePoints] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState(() => {
     if (typeof window !== "undefined") {
@@ -64,8 +65,32 @@ export default function Schedule() {
     return "all";
   });
 
+  // Helpers to format date and time
+  const formatDate = (dateStr, dayLabel) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return `${d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })} (${dayLabel || ""})`;
+  };
+
+  const formatTime = (timeStr) => {
+    if (!timeStr) return "";
+    const d = new Date(`1970-01-01T${timeStr}`);
+    if (isNaN(d.getTime())) return timeStr;
+    return d.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  // --- Data Loading Function (Reads from both tables) ---
   const loadSchedulesAndArchives = async () => {
     try {
+      // 1. Fetch Archived Schedules
       const { data: archivedData, error: archivedError } = await supabase
         .from("archived_schedules")
         .select("*")
@@ -78,10 +103,7 @@ export default function Schedule() {
         setArchivedSchedules(archivedData || []);
       }
 
-      const archivedScheduleIds = (archivedData || [])
-        .map((a) => a.schedule_id)
-        .filter(Boolean);
-
+      // 2. Fetch Active Schedules.
       const { data: activeData, error: activeError } = await supabase
         .from("schedules")
         .select("*")
@@ -91,10 +113,7 @@ export default function Schedule() {
         console.error("Fetch schedules error:", activeError);
         setSchedules([]);
       } else {
-        const filtered = (activeData || []).filter(
-          (s) => !archivedScheduleIds.includes(s.schedule_id)
-        );
-        setSchedules(filtered);
+        setSchedules(activeData || []);
       }
     } catch (err) {
       console.error("loadSchedulesAndArchives error:", err);
@@ -129,45 +148,83 @@ export default function Schedule() {
         "Friday",
         "Saturday",
       ];
-      setDay(days[d.getDay()]);
+      setDay(days[d.getUTCDay()]);
     } else setDay("");
   };
 
-  // ✅ FIX: Clean schedulePayload to avoid circular structure
+  // --- handleAddSchedule (no change needed for this fix) ---
   const handleAddSchedule = async (e) => {
     e.preventDefault();
-
-    const { data: userData } = await supabase.auth.getUser();
-
-    if (!userData?.user) {
-      Swal.fire("Error", "You must be logged in to add a schedule.", "error");
-      return;
-    }
-
-    const user_id = userData.user.id;
-
-    // Make sure routePoints is plain JSON-safe
-    let safeRoutePoints;
-    try {
-      safeRoutePoints = JSON.parse(JSON.stringify(routePoints || []));
-    } catch {
-      safeRoutePoints = [];
-    }
-
-    const schedulePayload = {
-      purok: String(purok), // ✅ ensure it's just a string/number, not an <option>
-      plan: "A",
-      day: String(day),
-      date: String(date),
-      start_time: String(startTime),
-      end_time: String(endTime),
-      waste_type: String(wasteType),
-      status: String(status),
-      route_points: safeRoutePoints,
-      created_by_id: user_id,
-    };
+    setLoading(true);
 
     try {
+      const { data: userData } = await supabase.auth.getUser();
+
+      if (!userData?.user) {
+        Swal.fire("Error", "You must be logged in to add a schedule.", "error");
+        return;
+      }
+
+      const user_id = userData.user.id;
+
+      const newStart = startTime;
+      const newEnd = endTime;
+
+      if (newStart >= newEnd) {
+        Swal.fire({
+          icon: "warning",
+          title: "Invalid Time",
+          text: "Start time must be before the end time.",
+          confirmButtonColor: "#b91c1c",
+        });
+        return;
+      }
+
+      const conflictingSchedule = schedules.find((s) => {
+        if (s.date === date && String(s.purok) === String(purok)) {
+          const existingStart = s.start_time;
+          const existingEnd = s.end_time;
+
+          const hasOverlap = newStart < existingEnd && newEnd > existingStart;
+          return hasOverlap;
+        }
+        return false;
+      });
+
+      if (conflictingSchedule) {
+        Swal.fire({
+          icon: "error",
+          title: "Schedule Conflict",
+          text: `This schedule overlaps with an existing schedule for Purok ${purok} (${formatTime(
+            conflictingSchedule.start_time
+          )} - ${formatTime(
+            conflictingSchedule.end_time
+          )}). Please choose a different time.`,
+          confirmButtonColor: "#b91c1c",
+        });
+        return;
+      }
+
+      let safeRoutePoints;
+      try {
+        safeRoutePoints = JSON.parse(JSON.stringify(routePoints || []));
+      } catch {
+        safeRoutePoints = [];
+      }
+
+      const schedulePayload = {
+        purok: String(purok),
+        plan: "A",
+        day: String(day),
+        date: String(date),
+        start_time: String(startTime),
+        end_time: String(endTime),
+        waste_type: String(wasteType),
+        status: String(status),
+        route_points: safeRoutePoints,
+        created_by_id: user_id,
+      };
+
       const { data, error } = await supabase
         .from("schedules")
         .insert([schedulePayload])
@@ -183,20 +240,32 @@ export default function Schedule() {
         return;
       }
 
-      if (statusFilter === "all" || data[0].status === statusFilter) {
-        setSchedules((prev) => [data[0], ...prev]);
-      }
+      // Update local state directly after successful insert
+      setSchedules((prev) => [data[0], ...prev]);
+
 
       Swal.fire("Success!", "New schedule has been added.", "success");
+      
+      // Reset form
+      setDate("");
+      setDay("");
+      setPurok("");
+      setStartTime("");
+      setEndTime("");
+      setWasteType("");
       setRoutePoints([]);
       setIsModalOpen(false);
+
     } catch (err) {
       console.error("Add schedule failed:", err);
-      Swal.fire("Error", "Unexpected JSON structure.", "error");
+      Swal.fire("Error", "An unexpected error occurred.", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ✅ Archive handler (unchanged logic)
+
+  // --- handleArchive (no change needed for this fix) ---
   const handleArchive = async (sched) => {
     const confirm = await Swal.fire({
       title: "Archive this schedule?",
@@ -230,9 +299,11 @@ export default function Schedule() {
     };
 
     try {
-      const { error: insertError } = await supabase
+      // 1. Insert into archived_schedules
+      const { data: insertedArchive, error: insertError } = await supabase
         .from("archived_schedules")
-        .insert([archivedData]);
+        .insert([archivedData])
+        .select("*"); // Select the inserted row to get archive_id
 
       if (insertError) {
         console.error("Insert error:", insertError);
@@ -240,16 +311,17 @@ export default function Schedule() {
         return;
       }
 
-      const { data: deletedRows, error: deleteError } = await supabase
+      // 2. Delete from schedules
+      const { error: deleteError } = await supabase
         .from("schedules")
         .delete()
-        .eq("schedule_id", sched.schedule_id)
-        .select();
+        .eq("schedule_id", sched.schedule_id);
 
-      if (deleteError || !deletedRows || deletedRows.length === 0) {
+      if (deleteError) {
+        // If delete fails, attempt to delete the archive entry to roll back
         Swal.fire(
           "Error",
-          `Could not remove schedule from active list.\n${deleteError?.message || "No record found."}`,
+          `Schedule was archived but failed to delete from active list. Rolling back archive. Details: ${deleteError.message}`,
           "error"
         );
         await supabase
@@ -259,10 +331,11 @@ export default function Schedule() {
         return;
       }
 
+      // 3. Update local state to reflect the change immediately
       setSchedules((prev) =>
         prev.filter((s) => s.schedule_id !== sched.schedule_id)
       );
-      loadSchedulesAndArchives();
+      setArchivedSchedules((prev) => [insertedArchive[0], ...prev]); // Add to the top of archived list
 
       Swal.fire("Archived!", "Schedule moved successfully.", "success");
     } catch (err) {
@@ -271,6 +344,8 @@ export default function Schedule() {
     }
   };
 
+
+  // --- 🚨 CRITICAL DEBUGGING FIX: handleRestore with detailed error logging 🚨 ---
   const handleRestore = async (archived) => {
     const confirm = await Swal.fire({
       title: "Restore this schedule?",
@@ -284,64 +359,58 @@ export default function Schedule() {
     if (!confirm.isConfirmed) return;
 
     try {
-      const { archive_id, archived_at, schedule_id, ...restoredData } = archived;
-
+      // 1. Prepare data for restoration
+      const { archive_id, archived_at, ...restoredData } = archived;
+      
+      // 2. Insert into schedules (re-activating the schedule)
       const { data: insertedData, error: insertError } = await supabase
         .from("schedules")
-        .insert([restoredData])
+        .insert([{...restoredData, schedule_id: restoredData.schedule_id}]) 
         .select("*");
 
       if (insertError) {
-        Swal.fire("Error", `Restore failed: ${insertError.message}`, "error");
+        console.error("1. Restore FAILED (Active Insert):", insertError);
+        Swal.fire("Error", `Restore failed (Active Insert): ${insertError.message}`, "error");
         return;
       }
 
+      // 3. Delete from archived_schedules
+      console.log("Attempting to delete archive_id:", archived.archive_id); // LOGGING ID
+      
       const { error: deleteError } = await supabase
         .from("archived_schedules")
         .delete()
-        .eq("archive_id", archived.archive_id);
+        .eq("archive_id", archived.archive_id); // Deleting by Primary Key
 
+      // 4. Check for the actual deletion error
       if (deleteError) {
+        // --- THIS LOG IS WHAT YOU NEED TO CHECK IN YOUR BROWSER CONSOLE ---
+        console.error("2. Archive Delete FAILED:", deleteError); 
+        // ------------------------------------------------------------------
         Swal.fire(
-          "Warning",
-          "Schedule restored but could not clean archive.",
-          "warning"
+          "Critical Warning",
+          `Schedule is restored, but **failed to delete archive entry**. It will reappear on reload. Check your console (F12) for the exact error message.`,
+          "error"
         );
+        // DO NOT update local archived state if delete failed
+      } else {
+        // SUCCESSFUL DELETION: Update local archived state
+        setArchivedSchedules((prev) =>
+          prev.filter((a) => a.archive_id !== archived.archive_id)
+        );
+        Swal.fire("Restored!", "Schedule restored successfully.", "success");
       }
 
-      setArchivedSchedules((prev) =>
-        prev.filter((a) => a.archive_id !== archived.archive_id)
-      );
+      // 5. Update local active state (since insert was successful)
       setSchedules((prev) => [insertedData[0], ...prev]);
-
-      Swal.fire("Restored!", "Schedule restored successfully.", "success");
+      
     } catch (err) {
-      Swal.fire("Error", "Unexpected error during restore.", "error");
+      console.error("3. Unexpected Restore Error:", err);
+      Swal.fire("Error", "An unexpected error occurred during restoration.", "error");
     }
   };
+  // --------------------------------------------------------------------------------
 
-  // Helpers to format date and time
-  const formatDate = (dateStr, dayLabel) => {
-    if (!dateStr) return "";
-    const d = new Date(dateStr);
-    return `${d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })} (${dayLabel || ""})`;
-  };
-
-  const formatTime = (timeStr) => {
-    if (!timeStr) return "";
-    // If timeStr already like '08:00', use it; otherwise try parse
-    const d = new Date(`1970-01-01T${timeStr}`);
-    if (isNaN(d.getTime())) return timeStr;
-    return d.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
 
   const statusColors = {
     "not-started": "bg-red-100 text-red-800",
@@ -349,7 +418,6 @@ export default function Schedule() {
     completed: "bg-green-100 text-green-800",
   };
 
-  // Apply status filter client-side (since DB fetch returned only non-archived active schedules)
   const displayedSchedules =
     statusFilter === "all"
       ? schedules
@@ -357,6 +425,7 @@ export default function Schedule() {
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      {/* ... (Header and filter UI - unchanged) ... */}
       <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
         Manage Garbage Collection Schedule
       </h2>
@@ -389,6 +458,7 @@ export default function Schedule() {
         </div>
       </div>
 
+      {/* ... (Schedule Table UI - unchanged) ... */}
       <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
         <div className="overflow-x-auto w-full">
           <table className="min-w-full text-sm table-auto">
@@ -406,7 +476,9 @@ export default function Schedule() {
             <tbody>
               {displayedSchedules.map((sched) => (
                 <tr key={sched.schedule_id} className="hover:bg-gray-50">
-                  <td className="py-3 px-4">{formatDate(sched.date, sched.day)}</td>
+                  <td className="py-3 px-4">
+                    {formatDate(sched.date, sched.day)}
+                  </td>
                   <td className="py-3 px-4">Purok {sched.purok}</td>
                   <td className="py-3 px-4">
                     {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
@@ -434,7 +506,10 @@ export default function Schedule() {
               ))}
               {displayedSchedules.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-5 text-gray-500 italic">
+                  <td
+                    colSpan={7}
+                    className="text-center py-5 text-gray-500 italic"
+                  >
                     No schedules available
                   </td>
                 </tr>
@@ -444,7 +519,7 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* --- Archive Modal --- */}
+      {/* --- Archive Modal (with fixed restore logic) --- */}
       {isArchiveModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-[300] transition-all duration-300 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100 flex flex-col">
@@ -475,14 +550,24 @@ export default function Schedule() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {archivedSchedules.map((sched) => (
-                    <tr key={sched.archive_id} className="hover:bg-gray-50 transition-colors duration-200">
-                      <td className="py-3 px-4 text-gray-800">{formatDate(sched.date, sched.day)}</td>
-                      <td className="py-3 px-4 text-gray-700">Purok {sched.purok}</td>
+                    <tr
+                      key={sched.archive_id}
+                      className="hover:bg-gray-50 transition-colors duration-200"
+                    >
+                      <td className="py-3 px-4 text-gray-800">
+                        {formatDate(sched.date, sched.day)}
+                      </td>
                       <td className="py-3 px-4 text-gray-700">
-                        {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
+                        Purok {sched.purok}
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">
+                        {formatTime(sched.start_time)} -{" "}
+                        {formatTime(sched.end_time)}
                       </td>
                       <td className="py-3 px-4 text-gray-700">{sched.plan}</td>
-                      <td className="py-3 px-4 text-gray-700">{sched.waste_type}</td>
+                      <td className="py-3 px-4 text-gray-700">
+                        {sched.waste_type}
+                      </td>
                       <td className="py-3 px-4 text-center">
                         <button
                           onClick={() => handleRestore(sched)}
@@ -496,7 +581,10 @@ export default function Schedule() {
 
                   {archivedSchedules.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center py-6 text-gray-500 italic">
+                      <td
+                        colSpan={6}
+                        className="text-center py-6 text-gray-500 italic"
+                      >
                         No archived schedules found.
                       </td>
                     </tr>
@@ -523,72 +611,183 @@ export default function Schedule() {
           className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[300] p-4"
           onClick={() => setIsModalOpen(false)}
         >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Add New Schedule (Plan A)</h3>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Add New Schedule (Plan A)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+              >
                 <XMarkIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleAddSchedule} className="overflow-y-auto p-6 space-y-4">
+            <form
+              onSubmit={handleAddSchedule}
+              className="overflow-y-auto p-6 space-y-4"
+            >
+              {/* ... (Modal form fields - unchanged) ... */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                  <input type="date" id="date" value={date} onChange={handleDateChange} className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700" required />
+                  <label
+                    htmlFor="date"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    id="date"
+                    value={date}
+                    onChange={handleDateChange}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
                 </div>
                 <div>
-                  <label htmlFor="day" className="block text-sm font-medium text-gray-700 mb-1">Day</label>
-                  <input type="text" id="day" value={day} readOnly className="w-full border-gray-300 p-2 border rounded-md bg-gray-100 text-gray-500" />
+                  <label
+                    htmlFor="day"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Day
+                  </label>
+                  <input
+                    type="text"
+                    id="day"
+                    value={day}
+                    readOnly
+                    className="w-full border-gray-300 p-2 border rounded-md bg-gray-100 text-gray-500"
+                  />
                 </div>
               </div>
-
               <div>
-                <label htmlFor="purok" className="block text-sm font-medium text-gray-700 mb-1">Purok</label>
-                <select id="purok" value={purok} onChange={(e) => setPurok(e.target.value)} className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700" required>
+                <label
+                  htmlFor="purok"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Purok
+                </label>
+                <select
+                  id="purok"
+                  value={purok}
+                  onChange={(e) => setPurok(e.target.value)}
+                  className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                  required
+                >
                   <option value="">Select Purok</option>
                   {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>Purok {i + 1}</option>
+                    <option key={i + 1} value={i + 1}>
+                      Purok {i + 1}
+                    </option>
                   ))}
                 </select>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="start_time" className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                  <input type="time" id="start_time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700" required />
+                  <label
+                    htmlFor="start_time"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    id="start_time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
                 </div>
                 <div>
-                  <label htmlFor="end_time" className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                  <input type="time" id="end_time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700" required />
+                  <label
+                    htmlFor="end_time"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    id="end_time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                    required
+                  />
                 </div>
               </div>
-
               <div>
-                <label htmlFor="waste_type" className="block text-sm font-medium text-gray-700 mb-1">Waste Type</label>
-                <select id="waste_type" value={wasteType} onChange={(e) => setWasteType(e.target.value)} className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700" required>
+                <label
+                  htmlFor="waste_type"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Waste Type
+                </label>
+                <select
+                  id="waste_type"
+                  value={wasteType}
+                  onChange={(e) => setWasteType(e.target.value)}
+                  className="w-full border-gray-300 p-2 border rounded-md shadow-sm focus:ring-red-700 focus:border-red-700"
+                  required
+                >
                   <option value="">Select Waste Type</option>
                   <option value="Recyclable Materials">♻️ Recyclable</option>
                   <option value="Toxic Materials">☣️ Toxic</option>
-                  <option value="Non-Recyclable Materials">🗑️ Non-Recyclable</option>
+                  <option value="Non-Recyclable Materials">
+                    🗑️ Non-Recyclable
+                  </option>
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Route Points (Click 2 points on map)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Route Points (Click 2 points on map)
+                </label>
                 <div className="overflow-hidden h-60 rounded-lg border border-gray-300">
-                  <MapContainer center={[8.228, 124.245]} zoom={13} className="h-full w-full">
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
-                    <RoutePicker points={routePoints} setPoints={setRoutePoints} />
-                    {routePoints.map((pos, i) => <Marker key={i} position={pos} />)}
-                    {routePoints.length === 2 && <Polyline positions={routePoints} color="transparent" weight={0} />}
+                  <MapContainer
+                    center={[8.228, 124.245]}
+                    zoom={13}
+                    className="h-full w-full"
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution="© OpenStreetMap"
+                    />
+                    <RoutePicker
+                      points={routePoints}
+                      setPoints={setRoutePoints}
+                    />
+                    {routePoints.map((pos, i) => (
+                      <Marker key={i} position={pos} />
+                    ))}
+                    {routePoints.length === 2 && (
+                      <Polyline positions={routePoints} color="transparent" weight={0} />
+                    )}
                   </MapContainer>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
-                <button type="submit" className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-md text-sm font-medium">Save</button>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                {/* --- UPDATED BUTTON with loading state --- */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-md text-sm font-medium transition-opacity disabled:opacity-50"
+                >
+                  {loading ? "Saving..." : "Save"}
+                </button>
               </div>
             </form>
           </div>

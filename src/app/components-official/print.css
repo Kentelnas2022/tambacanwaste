@@ -1,0 +1,105 @@
+/* * PRINT STYLESHEET
+ * Kini nga mga style mo-apply lang kung mag-print.
+ */
+@media print {
+
+  /* * Itago ang mga elemento nga dili para sa print 
+   */
+  .print-button, /* Ang print button ug ang filter dropdown */
+  .fixed.inset-0.pointer-events-none, /* Ang floating background blobs */
+  .pulse-dot, /* Ang "live" indicator sa activities */
+  .absolute.bottom-4.right-4 /* Ang chevron arrow sa sulod sa cards */ {
+    display: none !important;
+  }
+
+  /* * I-reset ang background ug text colors para makadaginot sa ink.
+   * Gamit og !important para ma-override ang Tailwind utilities.
+   */
+  body,
+  .dashboard-bg,
+  .hover-lift,
+  .chart-container,
+  [class*="bg-gradient-to-"] {
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+  }
+
+  /* * Pwersaha ang tanang text nga mahimong itom.
+   * Ilabi na importante para sa colored ug gradient text.
+   */
+  p, h2, h3, span, div, label,
+  .gradient-text,
+  [class*="text-gray-"],
+  [class*="text-slate-"],
+  [class*="text-blue-"],
+  [class*="text-green-"],
+  [class*="text-yellow-"],
+  [class*="text-orange-"],
+  [class*="text-red-"],
+  [class*="text-purple-"],
+  [class*="text-indigo-"] {
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact; /* Siguraduhon nga mo-apply ang color rules */
+    print-color-adjust: exact;
+  }
+
+  /* * Tanggala ang mga shadows ug uban pang visual-only effects.
+   */
+  .shadow-lg,
+  .shadow-md,
+  .shadow-sm,
+  .blur-2xl,
+  .backdrop-blur-sm {
+    box-shadow: none !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    opacity: 1 !important;
+  }
+
+  /* * I-simplify ang mga cards: tanggala ang shadow, dugangi og simple border.
+   */
+  .hover-lift {
+    box-shadow: none !important;
+    border: 1px solid #cccccc !important;
+  }
+  
+  /* I-reset ang styling sa activity items */
+  .flex.items-start.p-3.rounded-xl.border {
+    border: 1px solid #eee !important;
+  }
+
+  /* * I-adjust ang layout para sa papel.
+   */
+  .max-w-7xl {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* * Pwersaha ang grid containers nga mag-stack vertically
+   * para mas nindot tan-awon sa A4 nga papel.
+   */
+  .grid {
+    display: block !important;
+    gap: 20px !important; /* Pagdugang og space sa tunga sa mga stacked items */
+  }
+  
+  .grid > * {
+    width: 100% !important;
+  }
+
+  /* * Likayan nga maputol ang mga card sa tunga sa page.
+   */
+  .hover-lift {
+    page-break-inside: avoid;
+  }
+
+  /* * Siguraduhon nga ang charts mo-render sa saktong gidak-on.
+   */
+  .recharts-wrapper,
+  .recharts-surface {
+    width: 100% !important;
+    height: auto !important;
+  }
+}
