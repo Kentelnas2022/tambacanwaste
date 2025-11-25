@@ -43,73 +43,69 @@ export default function Register() {
   const handlePurokChange = (value) => setForm({ ...form, purok: value });
 
   const handleRegister = async (e) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
+  e.preventDefault();
+  setError("");
+  setLoading(true);
 
-    // --- Validations ---
-    if (!form.name.trim()) {
-      setError("Please enter your full name.");
-      setLoading(false);
-      return;
-    }
-    if (form.password.length < 6) {
-      setError("Password must be at least 6 characters long.");
-      setLoading(false);
-      return;
-    }
-    if (form.password !== form.password_confirm) {
-      setError("Passwords do not match.");
-      setLoading(false);
-      return;
-    }
-    if (!form.purok) {
-      setError("Please select your Purok.");
-      setLoading(false);
-      return;
-    }
-    const mobileRegex = /^09\d{9}$/;
-    if (!mobileRegex.test(form.mobile_number)) {
-      setError("Please enter a valid PH mobile number (e.g., 09123456789).");
-      setLoading(false);
-      return;
-    }
+  if (!form.name.trim()) {
+    setError("Please enter your full name.");
+    setLoading(false);
+    return;
+  }
+  if (form.password.length < 6) {
+    setError("Password must be at least 6 characters long.");
+    setLoading(false);
+    return;
+  }
+  if (form.password !== form.password_confirm) {
+    setError("Passwords do not match.");
+    setLoading(false);
+    return;
+  }
+  if (!form.purok) {
+    setError("Please select your Purok.");
+    setLoading(false);
+    return;
+  }
+  const mobileRegex = /^09\d{9}$/;
+  if (!mobileRegex.test(form.mobile_number)) {
+    setError("Please enter a valid PH mobile number (e.g., 09123456789).");
+    setLoading(false);
+    return;
+  }
 
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: {
-          data: {
-            name: form.name,
-            purok: form.purok,
-            mobile_number: form.mobile_number,
-            role: "resident",
-          },
-          emailRedirectTo: `${window.location.origin}/login?skipOnboarding=true`,
+  try {
+    const { error: insertError } = await supabase
+      .from("pending_registrations")
+      .insert([
+        {
+          email: form.email,
+          password: form.password,
+          name: form.name,
+          purok: form.purok,
+          mobile_number: form.mobile_number,
+          role: "resident",
         },
-      });
+      ]);
 
-      if (signUpError) throw signUpError;
-      if (!data?.user) throw new Error("User registration failed.");
+    if (insertError) throw insertError;
 
-      await Swal.fire({
-        title: "Registration Successful!",
-        text: "Please check your email to verify your account.",
-        icon: "success",
-        confirmButtonColor: "#b33b3b",
-        timer: 5000,
-        timerProgressBar: true,
-      });
+    await Swal.fire({
+      title: "Registration Submitted!",
+      text: "Your account is pending approval from the barangay officials.",
+      icon: "success",
+      confirmButtonColor: "#b33b3b",
+    });
 
-      router.push("/login?verified=false&skipOnboarding=true");
-    } catch (err) {
-      console.error("Registration error:", err.message || err);
-      setError(err.message || "An unexpected error occurred during registration.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    router.push("/login");
+  } catch (err) {
+    console.error("Registration error:", err.message || err);
+    setError(err.message || "An error occurred while submitting registration.");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white text-gray-800 px-4 py-8 sm:px-6">

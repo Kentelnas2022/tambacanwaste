@@ -2,13 +2,16 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/supabaseClient";
 import { useRouter } from "next/navigation";
-import { Menu, LogOut, UserPlus, X } from "lucide-react"; // Added X icon for modal
+import { Menu, LogOut, UserPlus, X } from "lucide-react"; // Removed 'Users' icon
 import Swal from "sweetalert2";
 
 export default function Header() {
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  
+  // State for the existing "Add User" form modal
+  const [showModal, setShowModal] = useState(false); 
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -21,7 +24,7 @@ export default function Header() {
   const menuRef = useRef(null);
   const router = useRouter();
 
-  // ⏰ Clock (Unchanged)
+  // ⏰ Clock
   useEffect(() => {
     const updateClock = () => {
       const now = new Date();
@@ -38,7 +41,7 @@ export default function Header() {
     return () => clearInterval(interval);
   }, []);
 
-  // 🧠 Close dropdown/modal (Unchanged)
+  // 🧠 Close dropdown/modal
   useEffect(() => {
     const handleClickOutside = (event) => {
       const node = menuRef.current;
@@ -64,7 +67,7 @@ export default function Header() {
     };
   }, []);
 
-  // 🚪 Logout function (Unchanged)
+  // 🚪 Logout function
   const handleLogout = async () => {
     setMenuOpen(false);
     try {
@@ -75,97 +78,93 @@ export default function Header() {
     }
   };
 
-  // 🧾 Add User function (Unchanged)
+  // 🧾 Add User function
   const handleCreateAccount = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!form.role) {
-    Swal.fire({
-      icon: "warning",
-      title: "Please select a role",
-    });
-    return;
-  }
-
-  try {
-    // ✅ Step 0: Check if email already exists in users table
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("uid")
-      .eq("email", form.email)
-      .maybeSingle();
-
-    if (existingUser) {
-      throw new Error("This email already exists in system.");
+    if (!form.role) {
+      Swal.fire({
+        icon: "warning",
+        title: "Please select a role",
+      });
+      return;
     }
 
-    // ✅ Step 1: Create user in Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      options: {
-        data: {
-          role: form.role,
+    try {
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("uid")
+        .eq("email", form.email)
+        .maybeSingle();
+
+      if (existingUser) {
+        throw new Error("This email already exists in system.");
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            role: form.role,
+          },
         },
-      },
-    });
+      });
 
-    if (authError) throw authError;
+      if (authError) throw authError;
 
-    const uid = authData?.user?.id;
-    if (!uid) throw new Error("Failed to retrieve user ID from auth.");
+      const uid = authData?.user?.id;
+      if (!uid) throw new Error("Failed to retrieve user ID from auth.");
 
-    // ✅ Step 2: Check again if the row already exists (due to triggers)
-    const { data: autoInserted } = await supabase
-      .from("users")
-      .select("*")
-      .eq("uid", uid)
-      .maybeSingle();
+      const { data: autoInserted } = await supabase
+        .from("users")
+        .select("*")
+        .eq("uid", uid)
+        .maybeSingle();
 
-    if (!autoInserted) {
-      // ✅ Step 3: Official INSERT (only if no auto insert happened)
-      const { error: insertError } = await supabase.from("users").insert([
-        {
-          uid,
-          name: form.name,
-          email: form.email,
-          purok: form.purok || null,
-          mobile_number: form.mobile_number || null,
-          role: form.role,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      if (!autoInserted) {
+        const { error: insertError } = await supabase.from("users").insert([
+          {
+            uid,
+            name: form.name,
+            email: form.email,
+            purok: form.purok || null,
+            mobile_number: form.mobile_number || null,
+            role: form.role,
+            created_at: new Date().toISOString(),
+          },
+        ]);
 
-      if (insertError) throw insertError;
+        if (insertError) throw insertError;
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: `${
+          form.role.charAt(0).toUpperCase() + form.role.slice(1)
+        } account created successfully!`,
+        showConfirmButton: false,
+        timer: 1800,
+      });
+
+      setShowModal(false);
+      setForm({
+        name: "",
+        email: "",
+        password: "",
+        purok: "",
+        mobile_number: "",
+        role: "",
+      });
+    } catch (error) {
+      console.error("Error creating account:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Failed to create account",
+        text: error.message,
+      });
     }
-
-    Swal.fire({
-      icon: "success",
-      title: `${
-        form.role.charAt(0).toUpperCase() + form.role.slice(1)
-      } account created successfully!`,
-      showConfirmButton: false,
-      timer: 1800,
-    });
-
-    setShowModal(false);
-    setForm({
-      name: "",
-      email: "",
-      password: "",
-      purok: "",
-      mobile_number: "",
-      role: "",
-    });
-  } catch (error) {
-    console.error("Error creating account:", error);
-    Swal.fire({
-      icon: "error",
-      title: "Failed to create account",
-      text: error.message,
-    });
-  }
-};
+  };
 
   return (
     <header className="relative overflow-visible shadow-lg w-full z-[100]">
@@ -181,7 +180,7 @@ export default function Header() {
       <div className="absolute inset-0 bg-black opacity-10" aria-hidden />
 
       <div className="relative z-20 container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
-        {/* Left: Logo + Title (Unchanged) */}
+        {/* Left: Logo + Title */}
         <div className="flex items-center gap-3">
           <img
             src="img/logo.png"
@@ -199,13 +198,14 @@ export default function Header() {
             </p>
           </div>
         </div>
+        
         {/* Right: Desktop actions */}
         <div className="hidden sm:flex items-center gap-3">
           <div className="px-4 py-2 rounded-lg bg-red-700 text-white font-semibold shadow text-sm">
             🕐 {time}
           </div>
 
-          {/* --- MODIFIED: "Add User" button is now red --- */}
+          {/* Add User Modal Button */}
           <button
             onClick={() => setShowModal(true)}
             className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
@@ -213,6 +213,7 @@ export default function Header() {
             <UserPlus className="w-4 h-4" /> Add User
           </button>
 
+          {/* Logout Button */}
           <button
             onClick={handleLogout}
             className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-900 text-white font-semibold shadow text-sm flex items-center gap-1 transition"
@@ -221,7 +222,7 @@ export default function Header() {
           </button>
         </div>
 
-        {/* Mobile Menu (Unchanged) */}
+        {/* Mobile Menu */}
         <div className="sm:hidden relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -230,6 +231,7 @@ export default function Header() {
             <Menu className="w-5 h-5" />
           </button>
 
+          {/* Mobile Menu Dropdown */}
           {menuOpen && (
             <div
               className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg overflow-hidden z-[200] animate-fade-in"
@@ -257,7 +259,7 @@ export default function Header() {
         </div>
       </div>
 
-      {/* --- MODIFIED: "Add User" Modal Redesigned --- */}
+      {/* "Add User" Modal (The existing modal) */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300] p-4 animate-fade-in">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">

@@ -1,13 +1,12 @@
-// app/login/LoginComponent.tsx
+// src/app/login/LoginComponent.tsx
 
 "use client";
 
-// ▼▼▼ THIS LINE IS NOW FIXED ▼▼▼
 import { useState, useEffect } from "react";
-// ▲▲▲ THIS LINE IS NOW FIXED ▲▲▲
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/supabaseClient";
+import Swal from 'sweetalert2'; // Import SweetAlert2
 import {
   LogIn,
   Truck,
@@ -16,7 +15,7 @@ import {
   Eye,
   EyeOff,
   X,
-} from "lucide-react"; // Removed unused icons
+} from "lucide-react";
 
 // --- Constants ---
 const onboardingScreens = [
@@ -57,6 +56,7 @@ interface LoginModalProps {
   setShowPassword: (value: boolean) => void;
   handleLogin: (e: React.FormEvent<HTMLFormElement>) => void;
   error: string | null;
+  loading: boolean;
 }
 
 function LoginModal({
@@ -70,6 +70,7 @@ function LoginModal({
   setShowPassword,
   handleLogin,
   error,
+  loading,
 }: LoginModalProps) {
   const modalVariants = {
     hidden: { opacity: 0, scale: 0.95, y: 20 },
@@ -100,6 +101,7 @@ function LoginModal({
             <button
               onClick={onClose}
               className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+              disabled={loading}
             >
               <X className="w-5 h-5" />
             </button>
@@ -112,6 +114,10 @@ function LoginModal({
                 Log in to access your dashboard.
               </p>
               <form onSubmit={handleLogin} className="w-full">
+                {/* NOTE: We are keeping the inline error display for general errors 
+                  but the primary pending/fatal errors will use SweetAlert.
+                  You can remove this block if you only want SweetAlerts for errors.
+                */}
                 {error && (
                   <p className="text-red-500 text-sm mb-3 text-center">
                     {error}
@@ -126,7 +132,8 @@ function LoginModal({
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
-                      className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                      disabled={loading}
+                      className="w-full pl-11 pr-4 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition disabled:opacity-50"
                     />
                   </div>
                   <div className="relative">
@@ -137,12 +144,14 @@ function LoginModal({
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      className="w-full pl-11 pr-11 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                      disabled={loading}
+                      className="w-full pl-11 pr-11 py-3 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition disabled:opacity-50"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
+                      disabled={loading}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition disabled:opacity-50"
                     >
                       {showPassword ? (
                         <EyeOff className="w-5 h-5" />
@@ -154,11 +163,16 @@ function LoginModal({
                 </div>
                 <motion.button
                   type="submit"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3 rounded-xl shadow-md hover:bg-opacity-90 transition"
+                  whileHover={{ scale: loading ? 1 : 1.03 }}
+                  whileTap={{ scale: loading ? 1 : 0.95 }}
+                  disabled={loading}
+                  className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3 rounded-xl shadow-md hover:bg-opacity-90 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Login
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                  ) : (
+                    "Login"
+                  )}
                 </motion.button>
               </form>
             </div>
@@ -254,9 +268,9 @@ function MobileView({
   showPassword,
   setShowPassword,
   error,
-}: any) { // Using 'any' for brevity, but you can define a proper prop interface
-  
-  // Typing animation logic is now contained within the component that uses it
+  loading,
+}: any) {
+
   const messages = ["Welcome!", "Hello There!", "Log In to Start!"];
   const [displayedText, setDisplayedText] = useState("");
   const [messageIndex, setMessageIndex] = useState(0);
@@ -264,7 +278,7 @@ function MobileView({
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (!started) return; // Only run animation on the login screen
+    if (!started) return;
     const speed = isDeleting ? 50 : 120;
     const timeout = setTimeout(() => {
       const currentMessage = messages[messageIndex];
@@ -411,6 +425,7 @@ function MobileView({
                   Log in to continue exploring your dashboard.
                 </p>
                 <form onSubmit={handleLogin} className="w-full">
+                  {/* We are keeping the inline error display for general errors here too */}
                   {error && (
                     <p className="text-red-500 text-sm mb-3 text-center">
                       {error}
@@ -425,7 +440,8 @@ function MobileView({
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        className="w-full pl-11 pr-4 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                        disabled={loading}
+                        className="w-full pl-11 pr-4 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition disabled:opacity-50"
                       />
                     </div>
                     <div className="relative">
@@ -436,12 +452,14 @@ function MobileView({
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
-                        className="w-full pl-11 pr-11 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition"
+                        disabled={loading}
+                        className="w-full pl-11 pr-11 py-3.5 bg-gray-100 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#d94f4f]/60 focus:bg-white transition disabled:opacity-50"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition"
+                        disabled={loading}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition disabled:opacity-50"
                       >
                         {showPassword ? (
                           <EyeOff className="w-5 h-5" />
@@ -453,11 +471,16 @@ function MobileView({
                   </div>
                   <motion.button
                     type="submit"
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3.5 rounded-xl shadow-md hover:bg-opacity-90 transition"
+                    whileHover={{ scale: loading ? 1 : 1.03 }}
+                    whileTap={{ scale: loading ? 1 : 0.95 }}
+                    disabled={loading}
+                    className="w-full mt-6 bg-[#d94f4f] text-white font-semibold py-3.5 rounded-xl shadow-md hover:bg-opacity-90 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
                   >
-                    Login
+                    {loading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                    ) : (
+                      "Login"
+                    )}
                   </motion.button>
                   <p className="mt-8 text-sm text-center text-gray-600">
                     Don’t have an account?{" "}
@@ -480,7 +503,6 @@ function MobileView({
 
 
 // --- Main Component (Default Export) ---
-// This is now much cleaner! It just handles state and decides which view to render.
 
 export default function LoginComponent() {
   const router = useRouter();
@@ -489,7 +511,7 @@ export default function LoginComponent() {
   const role = searchParams.get("role");
 
   // --- State ---
-  const [isMobile, setIsMobile] = useState(false); // Default to false
+  const [isMobile, setIsMobile] = useState(false);
   const [started, setStarted] = useState(skipOnboarding);
   const [step, setStep] = useState(
     skipOnboarding ? onboardingScreens.length + 1 : 0
@@ -504,68 +526,136 @@ export default function LoginComponent() {
   // --- Mobile Check ---
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
-    handleResize(); // Initial check
+    handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // --- Login Logic ---
+  // --- Login Logic (UPDATED TO USE SWEETALERT2) ---
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
+    const pendingMessage = 'Your registration is currently being reviewed by a Barangay Official. You will be able to log in once your account is approved.';
+
     try {
-      const { data: signInData, error: signInError } =
-        await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        // 1. Attempt initial sign-in with email/password
+        const { data: signInData, error: signInError } =
+            await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-      if (signInError) {
-        setError(signInError.message || "Invalid email or password.");
-        setLoading(false); // Stop loading on error
-        return;
-      }
+        // --- AUTHENTICATION FAILED BLOCK ---
+        if (signInError) {
+            
+            // Check the PENDING table by email from the form input
+            const { data: pendingData, error: pendingError } = await supabase
+                .from("pending_registrations")
+                .select("id")
+                .eq("email", email)
+                .maybeSingle();
 
-      const user = signInData?.user;
-      if (!user) {
-        setError("Authentication failed. Please try again.");
-        setLoading(false); // Stop loading on error
-        return;
-      }
+            if (pendingError) {
+                console.error("Error checking pending status:", pendingError);
+                // Fall back to showing a generic error if the pending check itself fails
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Login Failed',
+                    text: signInError.message || "An error occurred during login. Please try again.",
+                    confirmButtonColor: '#d94f4f'
+                });
+                setLoading(false);
+                return;
+            }
 
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("email, role")
-        .eq("email", user.email || email)
-        .single();
+            if (pendingData) {
+                // ✅ User is found in PENDING list - Display the custom message using SweetAlert
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Account Pending Approval',
+                    text: pendingMessage,
+                    confirmButtonColor: '#b33b3b'
+                });
+                setLoading(false);
+                return;
+            }
 
-      if (userError || !userData) {
-        setError("Account not recognized. Please contact your administrator.");
-        try {
-          await supabase.auth.signOut();
-        } catch (signOutErr) {
-          console.warn("Sign-out failed:", signOutErr);
+            // If sign-in failed AND user is NOT in pending list, show the original sign-in error via SweetAlert.
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Credentials',
+                text: "The email or password you entered is incorrect. Please try again.",
+                confirmButtonColor: '#d94f4f'
+            });
+            setLoading(false);
+            return;
         }
-        setLoading(false); // Stop loading on error
-        return;
-      }
+        
+        // --- AUTHENTICATION SUCCESS BLOCK ---
+        const user = signInData?.user;
+        if (!user) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Authentication Failed',
+                text: "Authentication failed. Please try again.",
+                confirmButtonColor: '#d94f4f'
+            });
+            setLoading(false);
+            return;
+        }
 
-      // Role-based redirection
-      if (userData.role === "official" || userData.role === "admin") {
-        router.push("/");
-      } else if (userData.role === "collector") {
-        router.push("/collector");
-      } else {
-        router.push("/residents");
-      }
+        // 2. Check the APPROVED 'users' table for role-based access
+        let { data: userData, error: userError } = await supabase
+            .from("users")
+            .select("email, role")
+            .eq("email", user.email || email)
+            .maybeSingle();
+
+        if (userError) {
+            console.error("Error fetching user role:", userError);
+        }
+
+        if (!userData) {
+            // User logged into Supabase Auth but is not in the approved 'users' table.
+            Swal.fire({
+                icon: 'warning',
+                title: 'Account Status',
+                text: "Your account is not fully set up or approved. Please contact your administrator.",
+                confirmButtonColor: '#d94f4f'
+            });
+            
+            // Immediately sign out the user since they should not be logged in yet.
+            try {
+                await supabase.auth.signOut();
+            } catch (signOutErr) {
+                console.warn("Sign-out failed:", signOutErr);
+            }
+            setLoading(false);
+            return;
+        }
+
+        // 3. APPROVED User - Proceed with Role-based redirection
+        setLoading(false); // Set loading to false before navigating
+        if (userData.role === "official" || userData.role === "admin") {
+            router.push("/");
+        } else if (userData.role === "collector") {
+            router.push("/collector");
+        } else {
+            router.push("/residents");
+        }
+
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.message || "An unexpected error occurred. Please try again.");
-      setLoading(false); // Stop loading on error
+        console.error("Login error:", err);
+        Swal.fire({
+            icon: 'error',
+            title: 'System Error',
+            text: err.message || "An unexpected system error occurred. Please try again.",
+            confirmButtonColor: '#d94f4f'
+        });
+        setLoading(false);
     }
-    // No finally block, as navigation will unmount this component
   };
 
   // --- Render Logic ---
@@ -580,6 +670,7 @@ export default function LoginComponent() {
     setShowPassword,
     handleLogin,
     error,
+    loading,
   };
 
   if (!isMobile) {
@@ -606,6 +697,7 @@ export default function LoginComponent() {
       showPassword={showPassword}
       setShowPassword={setShowPassword}
       error={error}
+      loading={loading}
     />
   );
 }

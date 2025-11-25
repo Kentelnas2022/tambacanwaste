@@ -11,8 +11,11 @@ import Dashboard from "./components-official/Dashboard";
 import SMS from "./components-official/SMS";
 import Reports from "./components-official/Reports";
 import Education from "./components-official/Education";
+import OfficialFeedbackPage from "./components-official/Feedback";
+// 🆕 IMPORT: The new section component we created
+import ManageUsersSection from "./components-official/ManageUsersSection"; 
 
-// ✅ Dynamically import Schedule to disable SSR (fixes "window is not defined")
+// ✅ Dynamically import Schedule to disable SSR
 const Schedule = dynamic(() => import("./components-official/Schedule"), {
   ssr: false,
 });
@@ -86,13 +89,20 @@ export default function Home() {
   return (
     <div className="bg-white min-h-screen">
       <Header />
+      
+      {/* 🧭 Tabs: Make sure 'Manage User' is in your tabs list here */}
       <NavigationTabs activeTab={activeTab} onTabChange={setActiveTab} />
+      
       <main className="container mx-auto px-4 py-8 space-y-8">
         {activeTab === "Dashboard" && <Dashboard />}
-        {activeTab === "Schedule" && <Schedule />} {/* ✅ No SSR for this */}
+        {activeTab === "Schedule" && <Schedule />}
         {activeTab === "SMS Alerts" && <SMS />}
         {activeTab === "Reports" && <Reports />}
         {activeTab === "Education" && <Education />}
+        {activeTab === "Feedback" && <OfficialFeedbackPage />}
+
+        {/* 🆕 NEW TAB CONTENT: This renders your new section */}
+        {activeTab === "Manage User" && <ManageUsersSection />}
       </main>
     </div>
   );

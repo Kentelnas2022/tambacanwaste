@@ -5,6 +5,8 @@ import {
   CalendarDaysIcon,
   ArchiveBoxArrowDownIcon,
   XMarkIcon,
+  PhotoIcon,
+  ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
 import { supabase } from "@/supabaseClient";
 import {
@@ -19,13 +21,15 @@ import "leaflet/dist/leaflet.css";
 import Swal from "sweetalert2";
 
 // Fix for default leaflet icon paths
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
+if (typeof window !== "undefined") {
+  delete L.Icon.Default.prototype._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl:
+      "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  });
+}
 
 // Component to pick route points on the map
 function RoutePicker({ points, setPoints }) {
@@ -52,8 +56,17 @@ export default function Schedule() {
   const [status, setStatus] = useState("not-started");
   const [schedules, setSchedules] = useState([]);
   const [archivedSchedules, setArchivedSchedules] = useState([]);
+  
+  // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  
+  // 📸 State for Image Viewer
+  const [viewImage, setViewImage] = useState(null);
+  
+  // 💬 State for Message Viewer
+  const [selectedMessage, setSelectedMessage] = useState(null);
+
   const [routePoints, setRoutePoints] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -152,7 +165,7 @@ export default function Schedule() {
     } else setDay("");
   };
 
-  // --- handleAddSchedule (no change needed for this fix) ---
+  // --- handleAddSchedule ---
   const handleAddSchedule = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -240,13 +253,9 @@ export default function Schedule() {
         return;
       }
 
-      // Update local state directly after successful insert
       setSchedules((prev) => [data[0], ...prev]);
-
-
       Swal.fire("Success!", "New schedule has been added.", "success");
       
-      // Reset form
       setDate("");
       setDay("");
       setPurok("");
@@ -265,7 +274,7 @@ export default function Schedule() {
   };
 
 
-  // --- handleArchive (no change needed for this fix) ---
+  // --- handleArchive ---
   const handleArchive = async (sched) => {
     const confirm = await Swal.fire({
       title: "Archive this schedule?",
@@ -295,15 +304,16 @@ export default function Schedule() {
       actual_end: sched.actual_end,
       created_by_id: sched.created_by_id,
       created_at: sched.created_at,
+      evidence_url: sched.evidence_url,
+      message: sched.message, 
       archived_at: new Date().toISOString(),
     };
 
     try {
-      // 1. Insert into archived_schedules
       const { data: insertedArchive, error: insertError } = await supabase
         .from("archived_schedules")
         .insert([archivedData])
-        .select("*"); // Select the inserted row to get archive_id
+        .select("*");
 
       if (insertError) {
         console.error("Insert error:", insertError);
@@ -311,14 +321,12 @@ export default function Schedule() {
         return;
       }
 
-      // 2. Delete from schedules
       const { error: deleteError } = await supabase
         .from("schedules")
         .delete()
         .eq("schedule_id", sched.schedule_id);
 
       if (deleteError) {
-        // If delete fails, attempt to delete the archive entry to roll back
         Swal.fire(
           "Error",
           `Schedule was archived but failed to delete from active list. Rolling back archive. Details: ${deleteError.message}`,
@@ -331,11 +339,10 @@ export default function Schedule() {
         return;
       }
 
-      // 3. Update local state to reflect the change immediately
       setSchedules((prev) =>
         prev.filter((s) => s.schedule_id !== sched.schedule_id)
       );
-      setArchivedSchedules((prev) => [insertedArchive[0], ...prev]); // Add to the top of archived list
+      setArchivedSchedules((prev) => [insertedArchive[0], ...prev]);
 
       Swal.fire("Archived!", "Schedule moved successfully.", "success");
     } catch (err) {
@@ -345,7 +352,7 @@ export default function Schedule() {
   };
 
 
-  // --- 🚨 CRITICAL DEBUGGING FIX: handleRestore with detailed error logging 🚨 ---
+  // --- handleRestore ---
   const handleRestore = async (archived) => {
     const confirm = await Swal.fire({
       title: "Restore this schedule?",
@@ -359,10 +366,8 @@ export default function Schedule() {
     if (!confirm.isConfirmed) return;
 
     try {
-      // 1. Prepare data for restoration
       const { archive_id, archived_at, ...restoredData } = archived;
       
-      // 2. Insert into schedules (re-activating the schedule)
       const { data: insertedData, error: insertError } = await supabase
         .from("schedules")
         .insert([{...restoredData, schedule_id: restoredData.schedule_id}]) 
@@ -374,34 +379,25 @@ export default function Schedule() {
         return;
       }
 
-      // 3. Delete from archived_schedules
-      console.log("Attempting to delete archive_id:", archived.archive_id); // LOGGING ID
-      
       const { error: deleteError } = await supabase
         .from("archived_schedules")
         .delete()
-        .eq("archive_id", archived.archive_id); // Deleting by Primary Key
+        .eq("archive_id", archived.archive_id); 
 
-      // 4. Check for the actual deletion error
       if (deleteError) {
-        // --- THIS LOG IS WHAT YOU NEED TO CHECK IN YOUR BROWSER CONSOLE ---
         console.error("2. Archive Delete FAILED:", deleteError); 
-        // ------------------------------------------------------------------
         Swal.fire(
           "Critical Warning",
-          `Schedule is restored, but **failed to delete archive entry**. It will reappear on reload. Check your console (F12) for the exact error message.`,
+          `Schedule is restored, but **failed to delete archive entry**. It will reappear on reload.`,
           "error"
         );
-        // DO NOT update local archived state if delete failed
       } else {
-        // SUCCESSFUL DELETION: Update local archived state
         setArchivedSchedules((prev) =>
           prev.filter((a) => a.archive_id !== archived.archive_id)
         );
         Swal.fire("Restored!", "Schedule restored successfully.", "success");
       }
 
-      // 5. Update local active state (since insert was successful)
       setSchedules((prev) => [insertedData[0], ...prev]);
       
     } catch (err) {
@@ -409,8 +405,6 @@ export default function Schedule() {
       Swal.fire("Error", "An unexpected error occurred during restoration.", "error");
     }
   };
-  // --------------------------------------------------------------------------------
-
 
   const statusColors = {
     "not-started": "bg-red-100 text-red-800",
@@ -424,8 +418,9 @@ export default function Schedule() {
       : schedules.filter((s) => (s.status || "").toLowerCase() === statusFilter);
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      {/* ... (Header and filter UI - unchanged) ... */}
+    <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      
+      {/* Header */}
       <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
         Manage Garbage Collection Schedule
       </h2>
@@ -436,18 +431,18 @@ export default function Schedule() {
           onChange={handleStatusFilterChange}
           className="rounded-lg px-4 py-2 bg-gray-100 text-gray-800 border-gray-300 border"
         >
-          <option value="all">All</option>
-          <option value="not-started">not-started</option>
-          <option value="ongoing">ongoing</option>
-          <option value="completed">completed</option>
+          <option value="all">All Status</option>
+          <option value="not-started">Not Started</option>
+          <option value="ongoing">Ongoing</option>
+          <option value="completed">Completed</option>
         </select>
 
         <div className="flex gap-2">
           <button
             onClick={() => setIsArchiveModalOpen(true)}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-md transition-all"
+            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2"
           >
-            View Archives
+            <ArchiveBoxArrowDownIcon className="w-5 h-5" /> View Archives
           </button>
           <button
             onClick={() => setIsModalOpen(true)}
@@ -458,7 +453,7 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* ... (Schedule Table UI - unchanged) ... */}
+      {/* --- Active Schedules Table --- */}
       <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
         <div className="overflow-x-auto w-full">
           <table className="min-w-full text-sm table-auto">
@@ -470,6 +465,10 @@ export default function Schedule() {
                 <th className="py-3 px-4 text-left">Plan</th>
                 <th className="py-3 px-4 text-left">Waste Type</th>
                 <th className="py-3 px-4 text-left">Status</th>
+                {/* 📝 Message Header */}
+                <th className="py-3 px-4 text-center">Message</th>
+                {/* 📸 Evidence Header */}
+                <th className="py-3 px-4 text-center">Evidence</th>
                 <th className="py-3 px-4 text-center">Action</th>
               </tr>
             </thead>
@@ -479,8 +478,8 @@ export default function Schedule() {
                   <td className="py-3 px-4">
                     {formatDate(sched.date, sched.day)}
                   </td>
-                  <td className="py-3 px-4">Purok {sched.purok}</td>
-                  <td className="py-3 px-4">
+                  <td className="py-3 px-4 font-medium">Purok {sched.purok}</td>
+                  <td className="py-3 px-4 text-gray-600">
                     {formatTime(sched.start_time)} - {formatTime(sched.end_time)}
                   </td>
                   <td className="py-3 px-4">{sched.plan}</td>
@@ -494,10 +493,41 @@ export default function Schedule() {
                       {sched.status}
                     </span>
                   </td>
+                  
+                  {/* 📝 Message Cell - Button Trigger */}
+                  <td className="py-3 px-4 text-center">
+                    {sched.message ? (
+                       <button
+                         onClick={() => setSelectedMessage(sched.message)}
+                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors text-xs font-medium"
+                       >
+                         <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                         View
+                       </button>
+                    ) : (
+                       <span className="text-gray-400 italic text-xs">-</span>
+                    )}
+                  </td>
+
+                  {/* 📸 Evidence Cell - Button Trigger (New) */}
+                  <td className="py-3 px-4 text-center">
+                    {sched.evidence_url ? (
+                        <button 
+                            onClick={() => setViewImage(sched.evidence_url)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-md border border-green-200 transition-colors text-xs font-medium"
+                        >
+                            <PhotoIcon className="w-4 h-4" />
+                            View
+                        </button>
+                    ) : (
+                        <span className="text-gray-400 text-xs italic">Pending</span>
+                    )}
+                  </td>
+
                   <td className="py-3 px-4 text-center">
                     <button
                       onClick={() => handleArchive(sched)}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded transition-all duration-200 hover:scale-105"
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded border border-gray-300 transition-all duration-200 text-xs font-medium"
                     >
                       Archive
                     </button>
@@ -507,10 +537,10 @@ export default function Schedule() {
               {displayedSchedules.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
-                    className="text-center py-5 text-gray-500 italic"
+                    colSpan={9} 
+                    className="text-center py-10 text-gray-500 italic"
                   >
-                    No schedules available
+                    No schedules available for this filter.
                   </td>
                 </tr>
               )}
@@ -519,10 +549,10 @@ export default function Schedule() {
         </div>
       </div>
 
-      {/* --- Archive Modal (with fixed restore logic) --- */}
+      {/* --- Archive Modal --- */}
       {isArchiveModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-[300] transition-all duration-300 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden border border-gray-100 flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] overflow-hidden border border-gray-100 flex flex-col">
             <div className="flex justify-between items-center border-b px-6 py-4 bg-gray-50">
               <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
                 <ArchiveBoxArrowDownIcon className="w-6 h-6 text-gray-600" />
@@ -545,6 +575,10 @@ export default function Schedule() {
                     <th className="py-3 px-4 text-left">Time</th>
                     <th className="py-3 px-4 text-left">Plan</th>
                     <th className="py-3 px-4 text-left">Waste Type</th>
+                    {/* 📝 Archive Message Header */}
+                    <th className="py-3 px-4 text-center">Message</th>
+                    {/* 📸 Archive Evidence Header */}
+                    <th className="py-3 px-4 text-center">Evidence</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
@@ -568,6 +602,37 @@ export default function Schedule() {
                       <td className="py-3 px-4 text-gray-700">
                         {sched.waste_type}
                       </td>
+
+                      {/* 📝 Archive Message Cell - Button Trigger */}
+                      <td className="py-3 px-4 text-center">
+                        {sched.message ? (
+                             <button
+                               onClick={() => setSelectedMessage(sched.message)}
+                               className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-md border border-gray-300 transition-colors text-xs font-medium"
+                             >
+                               <ChatBubbleLeftRightIcon className="w-4 h-4" />
+                               View
+                             </button>
+                        ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
+                      
+                      {/* 📸 Archive Evidence Cell - Button Trigger (New) */}
+                      <td className="py-3 px-4 text-center">
+                          {sched.evidence_url ? (
+                            <button 
+                                onClick={() => setViewImage(sched.evidence_url)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-md border border-gray-300 transition-colors text-xs font-medium"
+                            >
+                                <PhotoIcon className="w-4 h-4" />
+                                View
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                      </td>
+
                       <td className="py-3 px-4 text-center">
                         <button
                           onClick={() => handleRestore(sched)}
@@ -582,7 +647,7 @@ export default function Schedule() {
                   {archivedSchedules.length === 0 && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={8} 
                         className="text-center py-6 text-gray-500 italic"
                       >
                         No archived schedules found.
@@ -632,7 +697,6 @@ export default function Schedule() {
               onSubmit={handleAddSchedule}
               className="overflow-y-auto p-6 space-y-4"
             >
-              {/* ... (Modal form fields - unchanged) ... */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label
@@ -780,7 +844,6 @@ export default function Schedule() {
                 >
                   Cancel
                 </button>
-                {/* --- UPDATED BUTTON with loading state --- */}
                 <button
                   type="submit"
                   disabled={loading}
@@ -793,6 +856,73 @@ export default function Schedule() {
           </div>
         </div>
       )}
+
+      {/* 📸 FULL SCREEN IMAGE VIEWER MODAL */}
+      {viewImage && (
+        <div 
+            className="fixed inset-0 z-[400] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={() => setViewImage(null)}
+        >
+            <div className="relative max-w-4xl w-full h-full flex flex-col items-center justify-center">
+                <button 
+                    onClick={() => setViewImage(null)}
+                    className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-2 transition"
+                >
+                    <XMarkIcon className="w-8 h-8" />
+                </button>
+                <img 
+                    src={viewImage} 
+                    alt="Evidence Full View" 
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                />
+            </div>
+        </div>
+      )}
+
+      {/* 💬 MESSAGE VIEWER MODAL */}
+      {selectedMessage && (
+        <div 
+          className="fixed inset-0 z-[400] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedMessage(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b bg-gray-50">
+                <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                    <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600" />
+                    Collector Message
+                </h3>
+                <button 
+                  onClick={() => setSelectedMessage(null)}
+                  className="text-gray-400 hover:text-gray-600 transition p-1 hover:bg-gray-200 rounded-full"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
+                 {selectedMessage}
+               </p>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+              <button 
+                onClick={() => setSelectedMessage(null)}
+                className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

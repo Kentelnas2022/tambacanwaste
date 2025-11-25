@@ -13,7 +13,11 @@ import {
 import { supabase } from "@/supabaseClient";
 import StatsOverview from "./StatsOverview";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, X } from "lucide-react";
+import { Eye, X, Camera, Image as ImageIcon } from "lucide-react"; // Existing Lucide icons
+// Added Heroicons for Feedback to match the "official" style
+import { StarIcon, ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline"; 
+import { StarIcon as StarIconSolid } from "@heroicons/react/24/solid";
+
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import "leaflet/dist/leaflet.css";
@@ -35,7 +39,6 @@ const DEFAULT_CENTER = [8.228, 124.245];
 
 // --- RoutePicker Component ---
 function RoutePicker({ points, setPoints }) {
-  // ... (This component is unchanged)
   useMapEvents({
     click(e) {
       if (!points || points.length === 0) {
@@ -52,7 +55,6 @@ function RoutePicker({ points, setPoints }) {
 
 // --- MapController Component ---
 function MapController({ points }) {
-  // ... (This component is unchanged)
   const map = useMapEvents({});
   useEffect(() => {
     setTimeout(() => {
@@ -77,7 +79,6 @@ function MapController({ points }) {
 
 // --- parseCoordinates Helper ---
 const parseCoordinates = (coordData) => {
-  // ... (This function is unchanged)
   if (!coordData) return [];
   if (Array.isArray(coordData)) return coordData;
   try {
@@ -93,10 +94,17 @@ const parseCoordinates = (coordData) => {
 
 // --- StatusModal Component ---
 const StatusModal = ({ purok, onClose, onUpdate }) => {
-  // ... (This component is unchanged)
   const [newStatus, setNewStatus] = useState(purok.status || "not-started");
   const [newRoutePlan, setNewRoutePlan] = useState(purok.routePlan || "A");
   const [newRoutePoints, setNewRoutePoints] = useState(purok.coordinates || []);
+  
+  // 📸 New State for Camera/Evidence
+  const [evidenceFile, setEvidenceFile] = useState(null);
+  const [evidencePreview, setEvidencePreview] = useState(null);
+  
+  // 📝 New State for Optional Message
+  const [optionalMessage, setOptionalMessage] = useState(purok.message || "");
+
   const [isLoading, setIsLoading] = useState(false);
 
   const formatTime = (time) => {
@@ -119,52 +127,102 @@ const StatusModal = ({ purok, onClose, onUpdate }) => {
     }
   };
 
+  // 📸 Handle File Selection
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setEvidenceFile(file);
+      // Create a local preview URL
+      const objectUrl = URL.createObjectURL(file);
+      setEvidencePreview(objectUrl);
+    }
+  };
+
   const handleUpdateClick = async () => {
+    // 🛑 VALIDATION: Check if photo is uploaded
+    if (!evidenceFile) {
+      Swal.fire({
+        icon: "warning",
+        title: "Photo Required",
+        text: "You must capture a photo evidence to update the schedule.",
+      });
+      return;
+    }
+
     setIsLoading(true);
     Swal.fire({
       title: "Updating...",
-      text: "Please wait while the schedule is updated.",
+      text: "Uploading evidence and updating schedule...",
       allowOutsideClick: false,
       didOpen: () => {
         Swal.showLoading();
       },
     });
 
-    const { data: updatedData, error } = await supabase
-      .from("schedules")
-      .update({
-        status: newStatus,
-        plan: newRoutePlan,
-        route_points: JSON.stringify(newRoutePoints),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("schedule_id", purok.id)
-      .select()
-      .single();
+    try {
+      // 1. 📤 Upload Photo to Supabase Storage
+      const fileExt = evidenceFile.name.split(".").pop();
+      const fileName = `${purok.id}/${Date.now()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("evidence-photos") // ⚠️ Ensure this bucket exists in Supabase
+        .upload(fileName, evidenceFile);
 
-    setIsLoading(false);
+      if (uploadError) throw uploadError;
 
-    if (error) {
+      // 2. 🔗 Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("evidence-photos")
+        .getPublicUrl(fileName);
+
+      // 3. 💾 Update Database with Status + Photo URL + Message
+      const { data: updatedData, error } = await supabase
+        .from("schedules")
+        .update({
+          status: newStatus,
+          plan: newRoutePlan,
+          route_points: JSON.stringify(newRoutePoints),
+          evidence_url: publicUrl, // ⚠️ Ensure this column exists in your table
+          message: optionalMessage, // ⚠️ Ensure you added 'message' column to your table
+          updated_at: new Date().toISOString(),
+        })
+        .eq("schedule_id", purok.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setIsLoading(false);
+
+      Swal.fire({
+        icon: "success",
+        title: "Schedule Updated!",
+        text: `${purok.purok} updated with photo evidence.`,
+        showConfirmButton: false,
+        timer: 1800,
+      });
+
+      onUpdate(updatedData);
+      onClose();
+
+    } catch (error) {
+      setIsLoading(false);
       Swal.fire({
         icon: "error",
         title: "Update Failed",
         text: error.message,
       });
       console.error("Update error:", error);
-      return;
     }
-
-    Swal.fire({
-      icon: "success",
-      title: "Schedule Updated!",
-      text: `${purok.purok} schedule has been successfully updated.`,
-      showConfirmButton: false,
-      timer: 1800,
-    });
-
-    onUpdate(updatedData);
-    onClose();
   };
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (evidencePreview) {
+        URL.revokeObjectURL(evidencePreview);
+      }
+    };
+  }, [evidencePreview]);
 
   return (
     <motion.div
@@ -346,6 +404,65 @@ const StatusModal = ({ purok, onClose, onUpdate }) => {
               <option value="completed">Completed</option>
             </select>
           </div>
+
+          {/* 📸 CAMERA / EVIDENCE SECTION */}
+          <div>
+             <label className="block text-sm font-medium text-gray-700 mb-1">
+               Evidence Photo <span className="text-red-500">*</span>
+             </label>
+             <div className="mt-1 flex items-center gap-4">
+               {/* Hidden File Input */}
+               <input
+                 type="file"
+                 id="evidence-upload"
+                 accept="image/*"
+                 capture="environment" // 👈 This forces the rear camera on mobile
+                 onChange={handleFileChange}
+                 className="hidden"
+               />
+               
+               {/* Custom Camera Button */}
+               <label 
+                 htmlFor="evidence-upload"
+                 className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors"
+               >
+                 {evidencePreview ? (
+                    <div className="relative w-full h-full">
+                      <img 
+                        src={evidencePreview} 
+                        alt="Evidence Preview" 
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-lg">
+                        <Camera className="text-white w-8 h-8" />
+                        <span className="text-white text-sm font-medium ml-2">Retake</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                       <Camera className="w-8 h-8 text-gray-400 mb-2" />
+                       <p className="text-sm text-gray-500 font-semibold">Take Photo Evidence</p>
+                       <p className="text-xs text-gray-400">Click to open camera</p>
+                    </div>
+                  )}
+               </label>
+             </div>
+          </div>
+
+          {/* 📝 OPTIONAL MESSAGE SECTION (New) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Message (Optional)
+            </label>
+            <textarea
+              rows={3}
+              value={optionalMessage}
+              onChange={(e) => setOptionalMessage(e.target.value)}
+              placeholder="Add any additional notes here..."
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-800 focus:border-transparent text-sm"
+            />
+          </div>
+
         </div>
 
         {/* Footer */}
@@ -363,7 +480,7 @@ const StatusModal = ({ purok, onClose, onUpdate }) => {
             className="px-4 py-2 rounded-md bg-red-800 hover:bg-red-700 text-white font-medium transition disabled:opacity-50"
             disabled={isLoading}
           >
-            {isLoading ? "Updating..." : "Update Schedule"}
+            {isLoading ? "Uploading..." : "Update Schedule"}
           </button>
         </div>
       </motion.div>
@@ -376,6 +493,9 @@ export default function CollectionStatus() {
   const [schedules, setSchedules] = useState([]);
   const [selected, setSelected] = useState(null);
   const [mapSelected, setMapSelected] = useState(null);
+  
+  // ⭐ Feedback Modal State
+  const [feedbackModalData, setFeedbackModalData] = useState(null);
 
   // State for sorting
   const [sortConfig, setSortConfig] = useState({
@@ -388,7 +508,6 @@ export default function CollectionStatus() {
 
   // HELPER: Converts a Supabase row to the local state format
   const mapSupabaseRow = (r) => {
-    // ... (This function is unchanged)
     const parsedRoute = parseCoordinates(r.route_points);
     return {
       id: r.schedule_id,
@@ -402,12 +521,34 @@ export default function CollectionStatus() {
       status: (r.status || "not-started").toLowerCase(),
       wasteType: r.waste_type || "General",
       coordinates: parsedRoute,
+      evidenceUrl: r.evidence_url || null, 
+      // ⭐ Map Feedback Columns
+      residentRating: r.resident_rating,
+      residentComment: r.resident_comment,
+      // ⭐ Map Message Column (Ensure this exists in DB)
+      message: r.message, 
     };
+  };
+
+  // Helper to render stars
+  const renderStars = (rating) => {
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <span key={star}>
+            {star <= (rating || 0) ? (
+              <StarIconSolid className="w-6 h-6 text-yellow-400" />
+            ) : (
+              <StarIcon className="w-6 h-6 text-gray-300" />
+            )}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   // Fetch schedules and set up real-time subscription
   useEffect(() => {
-    // ... (This useEffect is unchanged)
     // 1. Initial Fetch
     const fetchSchedules = async () => {
       const { data, error } = await supabase
@@ -502,7 +643,6 @@ export default function CollectionStatus() {
   };
 
   const getStatusClasses = (status) => {
-    // ... (This function is unchanged)
     const styles = {
       "not-started": "bg-red-100 text-red-800",
       ongoing: "bg-yellow-100 text-yellow-800",
@@ -512,7 +652,6 @@ export default function CollectionStatus() {
   };
 
   const handleUpdate = (updatedSchedule) => {
-    // ... (This function is unchanged)
     setSchedules((prev) =>
       prev.map((p) =>
         p.id === updatedSchedule.id
@@ -522,6 +661,11 @@ export default function CollectionStatus() {
               plan: updatedSchedule.plan,
               coordinates: parseCoordinates(updatedSchedule.route_points),
               routePlan: updatedSchedule.plan,
+              evidenceUrl: updatedSchedule.evidence_url,
+              // Update feedback in local state if it changed (though usually collectors don't change feedback)
+              residentRating: updatedSchedule.resident_rating,
+              residentComment: updatedSchedule.resident_comment,
+              message: updatedSchedule.message,
             }
           : p
       )
@@ -530,7 +674,6 @@ export default function CollectionStatus() {
   };
 
   const handleArchive = async (item) => {
-    // ... (This function is unchanged)
     if (!item?.id) {
       Swal.fire("Error", "Missing schedule ID — cannot archive.", "error");
       return;
@@ -564,6 +707,11 @@ export default function CollectionStatus() {
             waste_type: item.wasteType,
             status: item.status,
             coordinates: JSON.stringify(item.coordinates || []),
+            evidence_url: item.evidenceUrl, // Preserve Evidence
+            // ⭐ Preserve Feedback
+            resident_rating: item.residentRating,
+            resident_comment: item.residentComment,
+            message: item.message,
             archived_at: new Date().toISOString(),
           },
         ]);
@@ -586,7 +734,6 @@ export default function CollectionStatus() {
   };
 
   const formatTime = (time) => {
-    // ... (This function is unchanged)
     if (!time) return "—";
     const [hour, minute] = time.split(":");
     let h = parseInt(hour, 10);
@@ -596,7 +743,6 @@ export default function CollectionStatus() {
   };
 
   const formatDateWithDay = (dateString, day) => {
-    // ... (This function is unchanged)
     if (!dateString || dateString === "—") return "—";
     const date = new Date(dateString);
     return `${day}, ${date.toLocaleDateString("en-US", {
@@ -609,7 +755,6 @@ export default function CollectionStatus() {
   // --- Data Flow Memos ---
 
   const uniqueSchedules = useMemo(() => {
-    // ... (This memo is unchanged)
     const map = new Map();
     schedules.forEach((p) => map.set(p.id, p));
     return Array.from(map.values());
@@ -623,11 +768,11 @@ export default function CollectionStatus() {
     return uniqueSchedules.filter(
       (schedule) => schedule.status === statusFilter
     );
-  }, [uniqueSchedules, statusFilter]); // Depends on uniqueSchedules and the filter
+  }, [uniqueSchedules, statusFilter]);
 
   // 💡 MODIFIED: This memo now depends on filteredSchedules
   const sortedSchedules = useMemo(() => {
-    const sortableItems = [...filteredSchedules]; // Use filteredSchedules
+    const sortableItems = [...filteredSchedules]; 
 
     if (sortConfig.key !== null) {
       sortableItems.sort((a, b) => {
@@ -658,7 +803,7 @@ export default function CollectionStatus() {
       });
     }
     return sortableItems;
-  }, [filteredSchedules, sortConfig]); // Depends on filteredSchedules
+  }, [filteredSchedules, sortConfig]);
 
   return (
     <motion.div
@@ -747,9 +892,13 @@ export default function CollectionStatus() {
                 </button>
               </th>
               
-              {/* 💡 MODIFIED: Removed sorting button from Status header */}
               <th className="py-3 px-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Status
+              </th>
+
+              {/* ⭐ New Feedback Header */}
+              <th className="py-3 px-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Feedback
               </th>
               
               <th className="py-3 px-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -805,6 +954,22 @@ export default function CollectionStatus() {
                       {p.status.replace("-", " ")}
                     </motion.span>
                   </td>
+                  
+                  {/* ⭐ Feedback Cell */}
+                  <td className="py-3 px-4 text-center">
+                    {p.residentRating || p.residentComment ? (
+                      <button
+                        onClick={() => setFeedbackModalData(p)}
+                        className="text-yellow-500 hover:text-yellow-600 flex items-center justify-center gap-1 mx-auto bg-yellow-50 hover:bg-yellow-100 px-2 py-1 rounded border border-yellow-200 transition"
+                      >
+                         <StarIconSolid className="w-4 h-4" />
+                         <span className="text-xs font-semibold">View</span>
+                      </button>
+                    ) : (
+                      <span className="text-gray-400 text-xs italic">-</span>
+                    )}
+                  </td>
+
                   <td className="py-3 px-4 text-right flex justify-end gap-2">
                     <motion.button
                       whileHover={{ scale: 1.05 }}
@@ -831,7 +996,6 @@ export default function CollectionStatus() {
         </table>
       </div>
 
-      {/* ... (Modals are unchanged) ... */}
       <AnimatePresence>
         {selected && (
           <StatusModal
@@ -850,42 +1014,90 @@ export default function CollectionStatus() {
               className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 z-10"
               onClick={() => setMapSelected(null)}
             >
-              ✖
+              <X size={24} />
             </button>
-            <h2 className="text-lg font-semibold mb-3">
-              Route for {mapSelected.purok}
-            </h2>
-            <div className="h-80 sm:h-96 w-full rounded-lg overflow-hidden">
+            <h3 className="text-lg font-bold mb-2">Route Map: {mapSelected.purok}</h3>
+            <div className="h-64 sm:h-80 md:h-96 w-full rounded-lg overflow-hidden border border-gray-200">
               <MapContainer
-                center={mapSelected.coordinates[0] || DEFAULT_CENTER}
+                key={mapSelected.id}
+                center={
+                  mapSelected.coordinates && mapSelected.coordinates.length > 0
+                    ? mapSelected.coordinates[0]
+                    : DEFAULT_CENTER
+                }
                 zoom={15}
-                style={{ height: "100%", width: "100%" }}
+                className="h-full w-full"
               >
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution="&copy; OpenStreetMap contributors"
+                  attribution="© OpenStreetMap"
                 />
-                {mapSelected.coordinates.length > 0 && (
-                  <>
-                    {mapSelected.coordinates.map((pos, idx) => (
-                      <Marker key={idx} position={pos}>
-                        <Popup>
-                          {idx === 0
-                            ? "Start Point"
-                            : idx === mapSelected.coordinates.length - 1
-                            ? "End Point"
-                            : `Stop ${idx}`}
-                        </Popup>
-                      </Marker>
-                    ))}
-                    <Polyline positions={mapSelected.coordinates} />
-                  </>
+                <MapController points={mapSelected.coordinates} />
+                {mapSelected.coordinates &&
+                  mapSelected.coordinates.map((pos, i) => (
+                    <Marker key={i} position={pos}>
+                      <Popup>
+                        {i === 0
+                          ? "Start"
+                          : i === mapSelected.coordinates.length - 1
+                          ? "End"
+                          : `Stop ${i}`}
+                      </Popup>
+                    </Marker>
+                  ))}
+                {mapSelected.coordinates && mapSelected.coordinates.length > 0 && (
+                  <Polyline positions={mapSelected.coordinates} />
                 )}
               </MapContainer>
             </div>
           </div>
         </div>
       )}
+
+      {/* ⭐ FEEDBACK DETAIL MODAL */}
+      {feedbackModalData && (
+        <div 
+          className="fixed inset-0 z-[400] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setFeedbackModalData(null)}
+        >
+          <div 
+            className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 px-6 py-4 border-b border-yellow-100 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">Resident Feedback</h3>
+              <button 
+                onClick={() => setFeedbackModalData(null)}
+                className="text-gray-500 hover:text-gray-700 bg-white rounded-full p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex flex-col items-center mb-6">
+                 <span className="text-sm text-gray-500 mb-2 uppercase tracking-wide font-semibold">Rating</span>
+                 {renderStars(feedbackModalData.residentRating)}
+                 <span className="text-xs text-gray-400 mt-1">
+                   {feedbackModalData.residentRating ? `${feedbackModalData.residentRating} out of 5 stars` : 'No rating given'}
+                 </span>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                <span className="text-sm text-gray-500 block mb-2 uppercase tracking-wide font-semibold">Comment</span>
+                <p className="text-gray-700 italic text-center">
+                  "{feedbackModalData.residentComment || "No comment provided."}"
+                </p>
+              </div>
+
+              <div className="mt-6 text-center text-xs text-gray-400">
+                Feedback for {feedbackModalData.purok} - {formatDateWithDay(feedbackModalData.scheduleDate, feedbackModalData.scheduleDay)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </motion.div>
   );
 }

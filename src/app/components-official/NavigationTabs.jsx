@@ -7,16 +7,20 @@ import {
   MessageSquare,
   FileText,
   BookOpen,
+  Star,
+  Users, // ✅ Imported Users icon
 } from "lucide-react";
 
 export default function NavigationTabs({ activeTab: initialTab, onTabChange }) {
-  // ✅ Removed "Routes"
   const tabs = [
     { name: "Dashboard", icon: LayoutDashboard, color: "text-blue-500" },
     { name: "Schedule", icon: Calendar, color: "text-green-500" },
     { name: "SMS Alerts", icon: MessageSquare, color: "text-pink-500" },
     { name: "Reports", icon: FileText, color: "text-yellow-500" },
     { name: "Education", icon: BookOpen, color: "text-indigo-500" },
+    { name: "Feedback", icon: Star, color: "text-orange-500" },
+    // 🆕 Added Manage User Tab with a Cyan color
+    { name: "Manage User", icon: Users, color: "text-cyan-500" }, 
   ];
 
   const [activeTab, setActiveTab] = useState(initialTab || "Dashboard");
@@ -25,8 +29,16 @@ export default function NavigationTabs({ activeTab: initialTab, onTabChange }) {
   useEffect(() => {
     const savedTab = localStorage.getItem("activeTab");
     if (savedTab) {
-      setActiveTab(savedTab);
-      onTabChange(savedTab);
+      // Check if the saved tab still exists in our list
+      const tabExists = tabs.some((t) => t.name === savedTab);
+      if (tabExists) {
+        setActiveTab(savedTab);
+        onTabChange(savedTab);
+      } else {
+        // Fallback if saved tab is invalid
+        setActiveTab("Dashboard");
+        onTabChange("Dashboard");
+      }
     }
   }, []);
 
@@ -36,6 +48,7 @@ export default function NavigationTabs({ activeTab: initialTab, onTabChange }) {
     localStorage.setItem("activeTab", name);
     onTabChange(name);
 
+    // Auto-scroll to section
     const section = document.getElementById(name.toLowerCase().replace(" ", "-"));
     if (section) {
       section.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -45,6 +58,7 @@ export default function NavigationTabs({ activeTab: initialTab, onTabChange }) {
   return (
     <nav className="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-40">
       <div className="px-2 sm:px-4">
+        {/* Added overflow-x-auto to prevent breaking on very small mobile screens with 7 tabs */}
         <div className="flex flex-wrap justify-between w-full relative">
           {tabs.map(({ name, icon: Icon, color }) => (
             <button

@@ -3,15 +3,17 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, AlertCircle, BookOpen } from "lucide-react"; // Added icons
+import { Calendar, AlertCircle, BookOpen, Star } from "lucide-react"; // 1. Added Star Icon
 import Header from "../components-residents/Header";
 import ScheduleSection from "../components-residents/ScheduleSection";
 import ReportPage from "../components-residents/ReportPage";
 import EducationPage from "../components-residents/EducationPage";
-import GreetingCard from "../components-residents/GreetingCard"; // 1. IMPORTED GREETING CARD
+// You will need to create this component or remove the import if not ready
+import FeedbackPage from "../components-residents/FeedbackPage"; 
+import GreetingCard from "../components-residents/GreetingCard"; 
 import { supabase } from "@/supabaseClient";
 
-// --- UPDATED: Minimalist Loading Screen Component ---
+// --- Minimalist Loading Screen Component ---
 function LoadingScreen() {
   return (
     <motion.div
@@ -23,7 +25,6 @@ function LoadingScreen() {
       <img
         src="img/logo.png"
         alt="Logo"
-        // --- MODIFIED: Changed w-24 h-24 to w-32 h-32 ---
         className="w-32 h-32 animate-pulse"
       />
     </motion.div>
@@ -108,7 +109,7 @@ export default function ResidentsPage() {
     };
   }, [router]);
 
-  // --- Render Logic (Unchanged) ---
+  // --- Render Logic ---
   return (
     <AnimatePresence mode="wait">
       {loading ? (
@@ -116,7 +117,6 @@ export default function ResidentsPage() {
       ) : (
         <motion.div
           key="main-app"
-          // This shell matches your app's mobile-first container
           className="flex flex-col h-screen max-w-lg mx-auto bg-white shadow-xl"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -124,13 +124,12 @@ export default function ResidentsPage() {
         >
           <Header activePage={activePage} />
 
-          {/* --- UPDATED Main Content Area --- */}
           <main className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-gray-100">
-            {/* 2. ADDED GREETING CARD COMPONENT */}
+            {/* Greeting Card */}
             <GreetingCard residentName={residentName} />
 
-            {/* --- NEW: Quick Actions Grid (from target HTML) --- */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* --- 2. CHANGED: Quick Actions Grid (2x2 Layout) --- */}
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setActivePage("schedule")}
                 className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center text-center"
@@ -154,9 +153,18 @@ export default function ResidentsPage() {
                 <BookOpen className="w-6 h-6 text-[#FF6B6B] mb-2" />
                 <h3 className="text-xs font-medium text-gray-800">Learn</h3>
               </button>
+
+              {/* --- 3. ADDED: Feedback Button --- */}
+              <button
+                onClick={() => setActivePage("feedback")}
+                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-all flex flex-col items-center justify-center text-center"
+              >
+                <Star className="w-6 h-6 text-yellow-500 mb-2" />
+                <h3 className="text-xs font-medium text-gray-800">Feedback</h3>
+              </button>
             </div>
 
-            {/* --- UPDATED: Content Area Wrapper (for fade-in) --- */}
+            {/* Content Area */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={activePage}
@@ -168,11 +176,24 @@ export default function ResidentsPage() {
                 {activePage === "schedule" && <ScheduleSection />}
                 {activePage === "report" && <ReportPage />}
                 {activePage === "education" && <EducationPage />}
+                {/* --- 4. ADDED: Feedback Page Render --- */}
+                {activePage === "feedback" && (
+                  // If FeedbackPage component is missing, this div acts as a placeholder
+                  typeof FeedbackPage !== "undefined" ? (
+                    <FeedbackPage />
+                  ) : (
+                    <div className="p-6 bg-white rounded-lg shadow text-center">
+                      <Star className="w-12 h-12 text-yellow-500 mx-auto mb-3" />
+                      <h2 className="text-lg font-bold text-gray-800">Feedback</h2>
+                      <p className="text-gray-500 text-sm mt-2">
+                        Feedback component is under construction.
+                      </p>
+                    </div>
+                  )
+                )}
               </motion.div>
             </AnimatePresence>
           </main>
-
-          {/* BottomNav Removed */}
         </motion.div>
       )}
     </AnimatePresence>
